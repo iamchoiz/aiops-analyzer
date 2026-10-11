@@ -29,6 +29,7 @@
 ## ⬜ 남은 것 — 로드맵 (우선순위 순)
 
 1. **Context Pack 완결** *(분석 정확도 영향 최대)* — 메트릭 baseline diff(어제/지난주 대비 n배) · Drain3 로그 템플릿 압축(신규/급증만) · 토폴로지 홉별 판정(pod→node→svc→ingress→ALB→RDS).
+   - ⚠️ **전제조건**: baseline diff 는 Thanos `offset 24h/7d` 를 쓰는데 **현재 과거 데이터 없음**(offset 쿼리 빈 결과 — 스포크 stop/start·보관 연속성 추정). 히스토리 며칠 쌓인 뒤/보관 확보 후 착수. 토폴로지는 CloudWatch(YACE, 알림플랜 Phase 5) 선행 필요.
 2. **상태 영속화** — G1/G2/인시던트/억제 메트릭이 in-memory → 파드 재시작 시 리셋. PVC 또는 Redis 로 이전.
 3. **피드백 루프** — Slack 👍/👎 → 메모리에 "이 패턴 과거 분석 틀림" 반영(품질 자가개선).
 4. **족보/런북 RAG** — 과거 트러블슈팅 문서 임베딩 → S3 Vectors → Context Pack 에 관련 런북 주입.
