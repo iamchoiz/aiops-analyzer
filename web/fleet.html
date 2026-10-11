@@ -352,12 +352,13 @@ async function openPanel(cluster,ns,focus){
       <span class="nm">${esc(w.name)}</span><span class="kind">${w.kind}</span>
       <span class="val">${w.ready}/${w.desired}</span><span class="pill ${cc}">${st}</span></div>`;}).join("")||okmsg("모든 워크로드 정상"));
   // 문제 파드
-  if(pp.length)h+=sec("문제 파드",pp.length,pp.map(p=>
-    `<div class="row"><span class="dot" style="background:${p.ready?colorOf('amber'):colorOf('red')}"></span>
+  if(pp.length)h+=sec("문제 파드",pp.length,pp.map(p=>{
+    const st=!p.ready?["not-ready","red"]:(p.recent_restarts?["restarting","amber"]:["ok","green"]);
+    const rs=p.recent_restarts?`<span class="val">↻${p.recent_restarts} (15m)</span>`:(p.restarts?`<span class="val muted">↻${p.restarts} 누적</span>`:"");
+    return `<div class="row"><span class="dot" style="background:${colorOf(st[1])}"></span>
      <span class="nm">${esc(p.pod)}</span>
-     ${p.last_reason?`<span class="pill red">${esc(p.last_reason)}</span>`:""}
-     ${p.restarts?`<span class="val">↻ ${p.restarts}</span>`:""}
-     <span class="pill ${p.ready?'amber':'red'}">${p.ready?'not-ready*':'not-ready'}</span></div>`).join(""));
+     ${p.last_reason?`<span class="pill ${p.recent_restarts?'red':'gray'}">${esc(p.last_reason)}</span>`:""}
+     ${rs}<span class="pill ${st[1]}">${st[0]}</span></div>`;}).join(""));
   // 파드 (Phase D)
   const pods=d.pods||[];
   if(pods.length)h+=sec("파드",pods.length,`<div style="max-height:260px;overflow:auto">`+pods.map(p=>

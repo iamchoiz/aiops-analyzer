@@ -146,24 +146,26 @@ def _wl(kind: str, name: str, ready: int, desired: int) -> dict:
 
 
 def _problem_pods(f: str) -> list[dict]:
+    """현재 문제만 — not-ready 이거나 최근 15분 재시작. 누적 재시작/과거 last_reason 만으로는 플래그 안 함
+    (회복된 파드가 과거 흔적으로 계속 남는 문제 방지)."""
     ready = _by(_q(f'kube_pod_status_ready{{{f},condition="true"}}'), "pod")        # pod→0/1
-    restarts = _by(_q(f"sum by (pod) (kube_pod_container_status_restarts_total{{{f}}})"), "pod")
+    recent = _by(_q(f"sum by (pod) (increase(kube_pod_container_status_restarts_total{{{f}}}[15m]))"), "pod")
+    total = _by(_q(f"sum by (pod) (kube_pod_container_status_restarts_total{{{f}}})"), "pod")  # 참고용
     term = {}
     for s in _q(f"kube_pod_container_status_last_terminated_reason{{{f}}} == 1"):
         term[s["metric"].get("pod")] = s["metric"].get("reason")
 
-    pods = set(ready) | {(p,) for p in restarts} | {(p,) for p in term if p}
     out = []
-    for key in pods:
+    for key in set(ready) | {(p,) for p in recent}:
         pod = key[0]
         rd = int(ready.get((pod,), 1))
-        rs = int(restarts.get((pod,), 0))
-        reason = term.get(pod)
-        bad = rd == 0 or rs >= 3 or (reason in _BAD_TERM_REASONS)
+        rr = round(recent.get((pod,), 0.0), 1)
+        bad = rd == 0 or rr >= 1          # 현재 not-ready 또는 최근 재시작
         if not bad:
             continue
-        out.append({"pod": pod, "ready": rd == 1, "restarts": rs, "last_reason": reason})
-    out.sort(key=lambda p: (p["ready"], -p["restarts"]))   # not-ready 먼저, 재시작 많은 순
+        out.append({"pod": pod, "ready": rd == 1, "recent_restarts": rr,
+                    "restarts": int(total.get((pod,), 0)), "last_reason": term.get(pod)})
+    out.sort(key=lambda p: (p["ready"], -p["recent_restarts"]))
     return out[:20]
 
 
