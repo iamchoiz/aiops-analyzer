@@ -273,9 +273,9 @@
 
   <section class="slide">
     <div class="wrap">
-      <div class="eyebrow">메모리 &amp; 유사도 <span style="color:var(--amber);font-weight:700">· 로드맵 (Phase 2, 미구현)</span></div>
+      <div class="eyebrow">메모리 &amp; 유사도 <span style="color:var(--green);font-weight:700">· 구현 완료 · 동작 중</span></div>
       <h2>"이거 지난번 그거 아냐?"를 즉답</h2>
-      <p class="sub">반복 재발 장애에 매번 풀 분석하면 느리고 비싸다. 과거 인시던트를 <b>벡터로 기억</b>해 두고, 새 인시던트가 오면 유사도로 먼저 맞춰본다. <b>아직 구현 전 — 설계만</b>.</p>
+      <p class="sub">반복 재발 장애에 매번 풀 분석하면 느리고 비싸다. 과거 인시던트를 <b>벡터로 기억</b>해 두고, 새 인시던트가 오면 유사도로 먼저 맞춘다. <b class="hl-g">실제 동작 검증</b> — 재발 알림을 유사도 <b>0.96</b>으로 잡아 Bedrock 없이 즉답.</p>
       <div class="flow">
         <div class="stage"><span class="num">1 · 시그니처</span><span class="ti">인시던트 지문</span><span class="de">alertname 집합 + 서비스 + 핵심 로그 템플릿을 하나의 시그니처로</span></div>
         <div class="arrow">→</div>
@@ -290,7 +290,7 @@
         <div class="flow-note" style="margin-top:0;border-left-color:var(--amber)">유사해도 <b>항상 "풀 재분석" 버튼</b> 제공 — 캐시가 틀릴 수 있으니 사람이 언제든 덮어쓴다.</div>
       </div>
     </div>
-    <div class="page-no">06 — 메모리 (로드맵)</div>
+    <div class="page-no">06 — 메모리·유사도</div>
   </section>
 
   <section class="slide">
@@ -384,6 +384,23 @@ cpu: 0.0  mem: 72Mi</div>
 
   <section class="slide">
     <div class="wrap">
+      <div class="eyebrow">로드맵 · 앞으로 할 것</div>
+      <h2>다음 단계 — 무엇을, 왜</h2>
+      <p class="sub">현재 "알림→분석→리포트→상황판→유사도 캐시"까지 동작. 더 똑똑하고 정확하게 만들 다음 과제들.</p>
+      <div class="grid g3">
+        <div class="card"><span class="k">정확도</span><h3>Context Pack 완결</h3><p><b>이게 뭔지</b> — LLM 에 주는 사실을 더 풍부하게.<br><b>할 일</b> — 어제/지난주 대비 <b>메트릭 baseline</b>, Drain3 <b>로그 템플릿</b> 압축, pod→node→svc→RDS <b>토폴로지 홉 판정</b>.</p></div>
+        <div class="card"><span class="k">안정성</span><h3>상태 영속화</h3><p><b>이게 뭔지</b> — G1/G2 인시던트 상태가 지금은 메모리라 파드 재시작 시 리셋.<br><b>할 일</b> — PVC 또는 Redis 로 이전.</p></div>
+        <div class="card"><span class="k">자가개선</span><h3>피드백 루프</h3><p><b>이게 뭔지</b> — 분석이 맞았는지 사람이 평가.<br><b>할 일</b> — Slack 👍/👎 버튼 → "이 패턴 과거 분석 틀림"을 메모리에 반영.</p></div>
+        <div class="card"><span class="k">도메인 지식</span><h3>족보/런북 RAG</h3><p><b>이게 뭔지</b> — 과거 트러블슈팅 문서를 분석에 주입.<br><b>할 일</b> — 문서 임베딩 → S3 Vectors → Context Pack 에 관련 런북 삽입.</p></div>
+        <div class="card"><span class="k">심층 조사</span><h3>에이전트 루프</h3><p><b>이게 뭔지</b> — 애매한 케이스(confidence low)를 자동으로 더 파고들기.<br><b>할 일</b> — MCP 도구(read-only)로 2단 bounded 조사, 8-call 상한.</p></div>
+        <div class="card"><span class="k">품질 측정</span><h3>평가 · 트레이싱</h3><p><b>이게 뭔지</b> — 분석 품질을 수치로 관리.<br><b>할 일</b> — LLM-as-judge 평가 + OTel GenAI 트레이싱(토큰·지연·비용).</p></div>
+      </div>
+    </div>
+    <div class="page-no">11 — 로드맵</div>
+  </section>
+
+  <section class="slide">
+    <div class="wrap">
       <div class="eyebrow">요약</div>
       <h2>지금, 실제로 돌아간다</h2>
       <p class="lead">알림 → 게이트 → 수집 → Bedrock → Slack·상황판까지 전 체인이 클러스터에서 가동 중.
@@ -395,12 +412,11 @@ cpu: 0.0  mem: 72Mi</div>
         <div class="kpi"><div class="n hl-a">read-only</div><div class="l">조사자 역할 고정</div></div>
       </div>
       <div class="chips" style="margin-top:38px">
-        <span class="chip">다음 → 로그/메트릭 심층 수집 보강</span>
-        <span class="chip">과거 인시던트 유사도 캐시</span>
-        <span class="chip">심층 조사 에이전트 루프</span>
+        <span class="chip" style="border-color:var(--green)"><b class="hl-g">✓</b> 유사도 캐시 (S3 Vectors) 동작</span>
+        <span class="chip">다음 → Context Pack 완결 · 피드백 루프 · 에이전트 (로드맵 참고)</span>
       </div>
     </div>
-    <div class="page-no">11 — 요약</div>
+    <div class="page-no">12 — 요약</div>
   </section>
 
 </div>
