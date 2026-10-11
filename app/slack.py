@@ -64,7 +64,10 @@ def post(incident: Incident, report: AnalysisReport) -> bool:
     if not config.slack_webhook_url:
         print("[slack:dry-run]\n" + json.dumps(blocks, ensure_ascii=False, indent=2))
         return False
-    payload = json.dumps({"blocks": blocks}).encode()
+    body = {"blocks": blocks}
+    if config.slack_channel:                 # 지정 시 기본 채널 대신 해당 채널로(classic webhook)
+        body["channel"] = config.slack_channel
+    payload = json.dumps(body).encode()
     req = urllib.request.Request(config.slack_webhook_url, data=payload,
                                  headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=10) as r:

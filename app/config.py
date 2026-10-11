@@ -18,8 +18,8 @@ class Config:
     llm_mode: str = os.environ.get("LLM_MODE", "mock")            # mock | bedrock
     bedrock_model_id: str = os.environ.get(
         "BEDROCK_MODEL_ID",
-        # 계정에 활성화된 실제 프로파일(global). 1단 one-shot=Haiku, 2단 루프=Sonnet 분리 후보(§6).
-        "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+        # 계정 구독 완료·파드 호출 검증된 프로파일(Haiku 4.5 는 미구독이라 Sonnet 4.6 사용).
+        "global.anthropic.claude-sonnet-4-6",
     )
     aws_region: str = os.environ.get("AWS_REGION", "ap-northeast-2")
     max_context_tokens: int = _int("MAX_CONTEXT_TOKENS", 40_000)
@@ -39,6 +39,7 @@ class Config:
 
     # Slack
     slack_webhook_url: str = os.environ.get("SLACK_WEBHOOK_URL", "")
+    slack_channel: str = os.environ.get("SLACK_CHANNEL", "")   # 빈 값이면 webhook 기본 채널
 
     # 관측/링크 생성용 베이스 URL
     grafana_base_url: str = os.environ.get("GRAFANA_BASE_URL", "https://grafana.eks.typelearn.co.kr")
