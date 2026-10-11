@@ -42,8 +42,8 @@ print(f"G4: critical 자동분석 허용 (ok={ok})")
 # Context Pack
 pack = build_context_pack(inc)
 assert pack["incident"]["alert_count"] == 2
-assert "metrics_baseline_diff" in pack  # seam 존재
-print(f"ContextPack: incident 메타 {pack['incident']['alert_count']}건 + seam 5블록")
+assert "_data_gaps" in pack and "namespace_state" in pack  # 리치 팩 키
+print(f"ContextPack: incident 메타 {pack['incident']['alert_count']}건, keys={sorted(pack.keys())}")
 
 # 분석(mock) + 렌더
 report = analyze(inc, pack)
