@@ -100,6 +100,29 @@
   .kpi .n{font-size:40px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums;}
   .kpi .l{font-size:13px;color:var(--muted);margin-top:2px;}
 
+  /* 상세 시퀀스 타임라인 */
+  .tl{display:flex;flex-direction:column;margin-top:6px;}
+  .tl .step{display:grid;grid-template-columns:34px 118px 1fr;gap:16px;align-items:start;padding:10px 0;border-top:1px solid var(--border);}
+  .tl .step:first-child{border-top:none;}
+  .tl .n{width:30px;height:30px;border-radius:50%;background:var(--surface);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;
+    font-family:var(--mono);font-size:13px;font-weight:700;color:var(--blue);box-shadow:var(--shadow-sm);}
+  .tl .step.key .n{background:var(--blue);color:#fff;border-color:var(--blue);}
+  .tl .who{font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--dim);padding-top:8px;font-weight:600;}
+  .tl .what{padding-top:4px;}
+  .tl .what b{font-size:15px;letter-spacing:-.01em;} .tl .what span{color:var(--muted);font-size:13px;line-height:1.5;}
+  .tl .what .mono{font-family:var(--mono);font-size:12px;color:var(--blue);background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:1px 6px;}
+  @media(max-width:860px){.tl .step{grid-template-columns:30px 1fr;} .tl .who{display:none;}}
+
+  /* 수집 & 판단 스펙 리스트 */
+  .spec{display:flex;flex-direction:column;gap:10px;margin-top:4px;}
+  .spec .it{display:grid;grid-template-columns:86px 1fr;gap:12px;}
+  .spec .it .l{font-family:var(--mono);font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--blue);font-weight:600;padding-top:2px;}
+  .spec .it .v{color:var(--muted);font-size:13.5px;line-height:1.55;}
+  .spec .it .v b{color:var(--text);}
+  .spec code{font-family:var(--mono);font-size:11.5px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 5px;color:var(--text);white-space:nowrap;}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:6px;}
+  @media(max-width:860px){.two{grid-template-columns:1fr;}}
+
   .topbar{position:fixed;top:0;left:0;right:0;height:3px;background:var(--border);z-index:20;}
   .topbar .fill{height:100%;background:linear-gradient(90deg,var(--green),var(--amber),var(--red));width:0;transition:width .25s;}
   .brand{position:fixed;top:20px;left:clamp(20px,5vw,40px);z-index:20;font-family:var(--mono);font-size:12px;letter-spacing:.1em;
@@ -198,6 +221,80 @@
 
   <section class="slide">
     <div class="wrap">
+      <div class="eyebrow">상세 시퀀스 · 알림 1건이 들어오면</div>
+      <h2>순서대로 이렇게 동작한다</h2>
+      <div class="tl">
+        <div class="step"><div class="n">1</div><div class="who">Alertmanager</div><div class="what"><b>알림 발화</b> <span>Prometheus/Thanos Ruler 가 룰 위반 감지 → Alertmanager 로. critical/warning 알림이 <span class="mono">continue</span> 복사로 analyzer 에도 전달(기존 Slack/PagerDuty 라우팅은 그대로).</span></div></div>
+        <div class="step key"><div class="n">2</div><div class="who">Analyzer</div><div class="what"><b>webhook 수신 → 즉시 202</b> <span><span class="mono">POST /webhook</span> 받자마자 응답하고 실제 처리는 백그라운드로. 알림 폭풍에도 블로킹 안 됨.</span></div></div>
+        <div class="step"><div class="n">3</div><div class="who">Gate · G1</div><div class="what"><b>중복 억제</b> <span>알림 fingerprint 로 쿨다운 체크 — 같은 알림이 재통지돼도 resolved 전까진 재분석 0. 중복이면 여기서 끝.</span></div></div>
+        <div class="step"><div class="n">4</div><div class="who">Gate · G2</div><div class="what"><b>인시던트로 묶기</b> <span>같은 클러스터·네임스페이스 알림을 5분 창으로 하나의 인시던트로 조립(신규 생성 or 기존 갱신). 15개↑면 "대규모 장애 모드".</span></div></div>
+        <div class="step"><div class="n">5</div><div class="who">Gate · G4</div><div class="what"><b>예산 체크</b> <span>critical 은 자동 분석, warning 은 보류(수동). 인시던트당 토큰·일일 상한 확인 — 통과해야 Bedrock 까지 감.</span></div></div>
+        <div class="step key"><div class="n">6</div><div class="who">Context Pack</div><div class="what"><b>사실 수집·압축 (LLM 없음)</b> <span>Loki 로그(에러 패턴·넓은 시간창) + Thanos 메트릭(워크로드·CPU/Mem·문제 파드) + ArgoCD sync·k8s 이벤트(최근 배포). 덤프 아닌 요약으로.</span></div></div>
+        <div class="step key"><div class="n">7</div><div class="who">Bedrock</div><div class="what"><b>원인 분석 (Sonnet 4.6)</b> <span>시스템프롬프트(read-only 조사자·인젝션 방어) + Context Pack → 구조화 JSON(요약·가설·증거·confidence·data_gaps). 실패하면 "분석 실패" degraded 리포트로 대체.</span></div></div>
+        <div class="step"><div class="n">8</div><div class="who">출력</div><div class="what"><b>발송 · 표시</b> <span>리포트를 코드가 렌더링해 <span class="mono">Slack #test</span> 로 발송 + 상황판/인시던트 히트맵에 반영.</span></div></div>
+        <div class="step"><div class="n">9</div><div class="who">해소</div><div class="what"><b>자동 정리</b> <span>Alertmanager 가 resolved 보내면 인시던트 자동 해소 → 상황판에서 사라짐(안전망: 오래된 firing 도 자동 해소).</span></div></div>
+      </div>
+    </div>
+    <div class="page-no">04 — 상세 동작</div>
+  </section>
+
+  <section class="slide">
+    <div class="wrap">
+      <div class="eyebrow">수집 &amp; 판단 · 어떤 데이터를, 무엇을 기준으로</div>
+      <h2>데이터는 이렇게 가져오고, 이렇게 판단한다</h2>
+      <div class="two">
+        <div class="card">
+          <h3 style="margin-top:0">📥 데이터 — 어디서·어떻게</h3>
+          <div class="spec">
+            <div class="it"><span class="l">로그</span><span class="v">Loki LogQL <code>{cluster,ns} |~ "err|fail|refused|timeout|rds|sql…"</code> · ANSI 제거 · 최근 <b>12h</b> · 상위 N줄</span></div>
+            <div class="it"><span class="l">워크로드</span><span class="v"><code>kube_pod_info</code>·<code>kube_pod_status_ready</code> + relabel 룰 join → 워크로드별 <b>ready/desired</b> (Deployment·STS·DS·Rollout)</span></div>
+            <div class="it"><span class="l">리소스</span><span class="v"><code>container_cpu/memory</code> × relabel join → 워크로드별 <b>CPU·Mem</b> (파드→워크로드 매핑)</span></div>
+            <div class="it"><span class="l">이상신호</span><span class="v"><code>ALERTS{firing}</code> · <code>restarts increase(15m)</code> · <code>last_terminated_reason</code>(OOMKilled 등)</span></div>
+            <div class="it"><span class="l">배포</span><span class="v">ArgoCD sync 이력 · k8s Events — <b>최근 변경</b>(RCA 1순위 신호)</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <h3 style="margin-top:0">⚖️ 판단 — 무엇을·어떤 기준</h3>
+          <div class="spec">
+            <div class="it"><span class="l">중복 G1</span><span class="v">fingerprint 쿨다운 <b>1h</b> — 같은 알림 재분석 0</span></div>
+            <div class="it"><span class="l">묶음 G2</span><span class="v">cluster+ns · <b>5분</b> 상관창 → 인시던트 1건 / <b>15개↑</b> = 대규모 장애 모드</span></div>
+            <div class="it"><span class="l">예산 G4</span><span class="v"><b>critical=자동</b> · warning=보류 · 인시던트당 토큰·일일 상한</span></div>
+            <div class="it"><span class="l">문제 파드</span><span class="v">현재 not-ready <b>또는</b> 최근 15분 재시작 ≥1 (누적 아님 → 회복되면 빠짐)</span></div>
+            <div class="it"><span class="l">타일</span><span class="v">색 = CPU/Mem 부하 or ready/desired · 크기 = replica 수</span></div>
+            <div class="it"><span class="l">신뢰도</span><span class="v">데이터 충분=<b class="hl-g">high</b> · 부족=<b class="hl-r">low</b> + 못 본 것(data_gaps) 명시</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="flow-note"><b>멀티클러스터 트릭:</b> 엔진은 허브에 있어 스포크 k8s API 를 직접 못 본다 →
+        전 클러스터로 이미 모이는 <b>Thanos(메트릭)·Loki(로그)</b>만 써서 모든 클러스터를 커버.</div>
+    </div>
+    <div class="page-no">05 — 수집 &amp; 판단</div>
+  </section>
+
+  <section class="slide">
+    <div class="wrap">
+      <div class="eyebrow">메모리 &amp; 유사도 <span style="color:var(--amber);font-weight:700">· 로드맵 (Phase 2, 미구현)</span></div>
+      <h2>"이거 지난번 그거 아냐?"를 즉답</h2>
+      <p class="sub">반복 재발 장애에 매번 풀 분석하면 느리고 비싸다. 과거 인시던트를 <b>벡터로 기억</b>해 두고, 새 인시던트가 오면 유사도로 먼저 맞춰본다. <b>아직 구현 전 — 설계만</b>.</p>
+      <div class="flow">
+        <div class="stage"><span class="num">1 · 시그니처</span><span class="ti">인시던트 지문</span><span class="de">alertname 집합 + 서비스 + 핵심 로그 템플릿을 하나의 시그니처로</span></div>
+        <div class="arrow">→</div>
+        <div class="stage"><span class="num">2 · 임베딩</span><span class="ti">Bedrock Titan</span><span class="de">시그니처를 벡터로 변환</span></div>
+        <div class="arrow">→</div>
+        <div class="stage bedrock"><span class="num">3 · 벡터 검색</span><span class="ti">S3 Vectors</span><span class="de">과거 인시던트와 코사인 유사도 비교</span></div>
+        <div class="arrow">→</div>
+        <div class="stage"><span class="num">4 · 판정</span><span class="ti">유사 ≥ 0.95</span><span class="de">"3일 전 INC-042 와 동일, 재발 3회" 즉답 → 풀 분석 스킵</span></div>
+      </div>
+      <div class="two" style="margin-top:20px">
+        <div class="flow-note" style="margin-top:0">왜 <b>S3 Vectors</b>? OpenSearch Serverless 대비 <b>~30배 저렴</b>(월 $10대) · idle 비용 0 — 1인 운영 규모에 맞음.</div>
+        <div class="flow-note" style="margin-top:0;border-left-color:var(--amber)">유사해도 <b>항상 "풀 재분석" 버튼</b> 제공 — 캐시가 틀릴 수 있으니 사람이 언제든 덮어쓴다.</div>
+      </div>
+    </div>
+    <div class="page-no">06 — 메모리 (로드맵)</div>
+  </section>
+
+  <section class="slide">
+    <div class="wrap">
       <div class="eyebrow">설계 원칙 · 쉽게</div>
       <h2>네 가지만 기억하면 된다</h2>
       <div class="grid g2" style="margin-top:22px">
@@ -207,39 +304,7 @@
         <div class="card"><div class="ico">🔎</div><h3>결론보다 '조사 과정'을 보여준다</h3><p>가설마다 증거·신뢰도, 그리고 "무엇을 못 봤는지(data gaps)"까지. 틀린 고확신보다 정직한 불확실성.</p></div>
       </div>
     </div>
-    <div class="page-no">04 — 원칙</div>
-  </section>
-
-  <section class="slide">
-    <div class="wrap">
-      <div class="eyebrow">① 게이트 · 비용과 노이즈를 먼저 잡는다</div>
-      <h2>Bedrock 앞의 싼 필터 3단</h2>
-      <p class="sub">폭주는 평상시가 아니라 <b>장애 중</b>(알림 폭풍 = 호출 폭증)에 터진다. 그래서 LLM 전에 결정론적 코드로 거른다.</p>
-      <div class="grid g3">
-        <div class="card"><span class="k">G1 · 중복 억제</span><h3>같은 알림은 한 번만</h3><p>동일 알림이 12시간마다 재통지돼도 재분석하지 않는다. 해소되면 쿨다운 해제.</p></div>
-        <div class="card"><span class="k">G2 · 인시던트 조립</span><h3>관련 알림을 묶는다</h3><p>같은 클러스터·네임스페이스의 알림을 5분 창으로 하나의 인시던트로. 폭풍이면 "대규모 장애 모드".</p></div>
-        <div class="card"><span class="k">G4 · 예산</span><h3>돈이 새지 않게</h3><p>인시던트당 토큰 상한·일일 상한. 기본은 <b>critical 만 자동</b>, warning 은 필요할 때 수동.</p></div>
-      </div>
-      <div class="flow-note">걸러진 모든 알림은 <b>메트릭으로 기록</b>된다 — 억제 계층 자체도 관측 대상.</div>
-    </div>
-    <div class="page-no">05 — 게이트</div>
-  </section>
-
-  <section class="slide">
-    <div class="wrap">
-      <div class="eyebrow">② Context Pack · LLM 에 줄 '압축된 사실'</div>
-      <h2>흩어진 신호를 한 곳에 모은다</h2>
-      <p class="sub">게이트를 통과한 인시던트에 대해, 결정론적 코드가 아래를 모아 요약한다. 소스가 죽어도 멈추지 않고 "못 본 부분"으로 표시한다.</p>
-      <div class="grid g4">
-        <div class="card"><div class="ico">📜</div><h3>로그</h3><p>Loki — 에러·연결 실패 패턴을 넓게 검색, 색코드 제거 후 핵심만</p></div>
-        <div class="card"><div class="ico">📈</div><h3>메트릭</h3><p>Thanos — 전 클러스터 파드·워크로드·CPU/메모리·발화 알림</p></div>
-        <div class="card"><div class="ico">🚀</div><h3>배포 이력</h3><p>ArgoCD sync·k8s 이벤트 — 원인 1순위 신호(최근 배포)</p></div>
-        <div class="card"><div class="ico">🧾</div><h3>메타</h3><p>인시던트 현재 상태·묶인 알림·심각도</p></div>
-      </div>
-      <div class="flow-note"><b>멀티클러스터 트릭:</b> 엔진은 허브에 있어 스포크 API 를 직접 못 본다 →
-        전 클러스터로 이미 모이는 <b>Thanos(메트릭)·Loki(로그)</b>만 사용해 모든 클러스터를 커버.</div>
-    </div>
-    <div class="page-no">06 — 수집</div>
+    <div class="page-no">07 — 원칙</div>
   </section>
 
   <section class="slide">
@@ -267,7 +332,7 @@ cpu: 0.0  mem: 72Mi</div>
       </div>
       <div class="flow-note">신뢰는 결론이 아니라 <b>조사 과정</b>에서 나온다 — 증거·신뢰도·못 본 것을 전부 드러낸다. 리포트 렌더링은 코드가, LLM 은 데이터만.</div>
     </div>
-    <div class="page-no">07 — 분석</div>
+    <div class="page-no">08 — 분석</div>
   </section>
 
   <section class="slide">
@@ -298,7 +363,7 @@ cpu: 0.0  mem: 72Mi</div>
       </div>
       <div class="flow-note">엔진이 가진 데이터를 <b>엔진이 직접</b> 웹으로 그린다 — Grafana 패널이 아니라 100% 통제되는 전용 콘솔.</div>
     </div>
-    <div class="page-no">08 — 상황판</div>
+    <div class="page-no">09 — 상황판</div>
   </section>
 
   <section class="slide">
@@ -314,7 +379,7 @@ cpu: 0.0  mem: 72Mi</div>
         <div class="layer"><span class="tag">접근</span><span class="d">상황판은 <b>GitHub SSO</b> 뒤 · webhook·헬스체크는 예외</span></div>
       </div>
     </div>
-    <div class="page-no">09 — 배포</div>
+    <div class="page-no">10 — 배포</div>
   </section>
 
   <section class="slide">
@@ -335,7 +400,7 @@ cpu: 0.0  mem: 72Mi</div>
         <span class="chip">심층 조사 에이전트 루프</span>
       </div>
     </div>
-    <div class="page-no">10 — 요약</div>
+    <div class="page-no">11 — 요약</div>
   </section>
 
 </div>
