@@ -3,8 +3,10 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#0a0d12" />
 <title>AIOps 현황 상황판</title>
 <style>
+  html{color-scheme:dark;}
   :root{
     --bg:#0a0d12; --bar:#11151c; --bar2:#161b23; --border:#242b35; --text:#e8edf4; --muted:#8a94a3;
     --green:#2f9e44; --green2:#1f7a33; --amber:#d9a441; --red:#d6453d; --gray:#39404a; --accent:#4c8dff;
@@ -19,19 +21,28 @@
   nav a:hover{color:#fff;background:#1a212b;}
   .legend{display:flex;gap:14px;font-size:11px;color:var(--muted);margin-left:auto;align-items:center;}
   .legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:middle;}
-  #meta{color:var(--muted);font-size:11px;min-width:150px;text-align:right;}
+  #meta{color:var(--muted);font-size:11px;min-width:140px;text-align:right;}
+  .seg{display:inline-flex;align-items:center;gap:0;background:#0e131a;border:1px solid var(--border);border-radius:7px;overflow:hidden;}
+  .seg .lab{color:var(--muted);font-size:10px;padding:0 7px;}
+  .seg button{background:none;border:none;color:var(--muted);font-size:11px;padding:4px 9px;cursor:pointer;transition:.12s;font-family:inherit;}
+  .seg button.on{background:var(--accent);color:#fff;}
+  .seg button:hover:not(.on){background:#1a212b;color:#fff;}
+  .ctrls{display:flex;gap:10px;align-items:center;}
+  .btn-an{background:linear-gradient(180deg,#3b7bff,#2f6ae0);color:#fff;border:none;border-radius:8px;padding:9px 14px;font-size:13px;font-weight:600;cursor:pointer;width:100%;margin-top:6px;transition:.15s;}
+  .btn-an:hover{filter:brightness(1.1);} .btn-an:disabled{opacity:.6;cursor:wait;}
   #map{position:relative;width:100%;height:calc(100% - 46px);}
   svg{width:100%;height:100%;display:block;}
   .wl{cursor:pointer;transition:opacity .15s;}
-  .wl:hover{opacity:.82;stroke:#fff !important;stroke-width:1.4 !important;}
-  .wl-label,.wl-sub{pointer-events:none;}
-  .wl-label{fill:#fff;font-weight:600;}
-  .wl-sub{fill:rgba(255,255,255,.82);}
-  .cl-box{fill:rgba(255,255,255,.015);stroke:var(--border);stroke-width:1.2;}
-  .cl-label{pointer-events:none;fill:#cdd6e2;font-weight:800;font-size:12px;letter-spacing:.5px;}
-  .cl-stat{pointer-events:none;fill:var(--muted);font-size:11px;}
-  .ns-box{fill:none;stroke:rgba(255,255,255,.07);stroke-width:1;}
-  .ns-label{pointer-events:none;fill:var(--muted);font-weight:700;font-size:10.5px;}
+  .wl:hover{opacity:.85;stroke:#fff !important;stroke-width:1.6 !important;}
+  .wl-label,.wl-sub{pointer-events:none;paint-order:stroke;stroke:rgba(0,0,0,.45);stroke-width:2.4px;stroke-linejoin:round;}
+  .wl-label{fill:#fff;font-weight:700;letter-spacing:.1px;}
+  .wl-sub{fill:rgba(255,255,255,.92);font-variant-numeric:tabular-nums;font-weight:600;}
+  .cl-box{fill:rgba(255,255,255,.012);stroke:var(--border);stroke-width:1.2;}
+  .cl-bar{fill:rgba(255,255,255,.045);}
+  .cl-label{pointer-events:none;fill:#eaf0f8;font-weight:800;font-size:12.5px;letter-spacing:.6px;}
+  .cl-stat{pointer-events:none;fill:var(--muted);font-size:11px;font-variant-numeric:tabular-nums;}
+  .ns-box{fill:none;stroke:rgba(255,255,255,.08);stroke-width:1;}
+  .ns-label{pointer-events:none;fill:#aab4c2;font-weight:700;font-size:11px;letter-spacing:.2px;}
   .ns-alert{pointer-events:none;fill:var(--red);font-weight:700;font-size:10px;}
   #tip{position:fixed;pointer-events:none;background:rgba(8,11,16,.96);border:1px solid var(--border);padding:9px 12px;border-radius:9px;font-size:12px;display:none;max-width:300px;z-index:40;box-shadow:0 8px 28px rgba(0,0,0,.5);}
   #tip b{font-size:13px;} #tip .k{color:var(--muted);}
@@ -71,14 +82,15 @@
 <header>
   <h1>🗺️ AIOps 현황 상황판</h1>
   <nav><a href="/ui/fleet.html" class="active">현황</a><a href="/ui/">인시던트</a></nav>
-  <div class="legend">
-    <span><i style="background:var(--green)"></i>정상</span>
-    <span><i style="background:var(--amber)"></i>degraded</span>
-    <span><i style="background:var(--red)"></i>down</span>
-    <span><i style="background:var(--gray)"></i>scaled 0</span>
-    <span class="muted">크기=replica · 타일=워크로드</span>
+  <div class="ctrls">
+    <div class="seg"><span class="lab">색</span>
+      <button data-color="cpu" class="on">CPU</button><button data-color="mem">메모리</button><button data-color="health">헬스</button></div>
+    <div class="seg"><span class="lab">크기</span>
+      <button data-size="replicas" class="on">replica</button><button data-size="cpu">CPU</button><button data-size="mem">메모리</button></div>
   </div>
+  <div id="legend" class="legend"></div>
   <div id="meta">—</div>
+  <a href="/logout" style="color:var(--muted);font-size:11px;text-decoration:none;padding:4px 8px;">로그아웃</a>
 </header>
 <div id="map"><svg id="svg" preserveAspectRatio="none"></svg><div id="err"></div></div>
 <div id="tip"></div>
@@ -108,6 +120,41 @@ function wlStatus(t){
 }
 function esc(s){return (s??"").toString().replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
 
+// ── 색/크기 모드 (finviz 맵뷰 전환) ──
+let COLOR_MODE="cpu", SIZE_MODE="replicas", LAST=null, _maxCpu=0.001, _maxMem=1;
+function lerp(a,b,t){return Math.round(a+(b-a)*t);}
+function heat(v){ // 0..1 → 초록→노랑→주황→빨강 (저사용=cool, 고사용=hot)
+  const s=[[31,122,51],[217,196,65],[232,135,44],[214,69,61]];
+  const t=Math.max(0,Math.min(1,Math.pow(v,0.6)));const g=t*3,i=Math.min(2,Math.floor(g)),f=g-i;
+  return `rgb(${lerp(s[i][0],s[i+1][0],f)},${lerp(s[i][1],s[i+1][1],f)},${lerp(s[i][2],s[i+1][2],f)})`;
+}
+function tileFill(t){
+  if(COLOR_MODE==="health") return wlColor(t);
+  if(COLOR_MODE==="cpu") return (t.cpu>0)?heat(t.cpu/_maxCpu):C_GRAY;
+  if(COLOR_MODE==="mem") return (t.mem>0)?heat(t.mem/_maxMem):C_GRAY;
+  return C_GRAY;
+}
+function tileSize(t){
+  if(SIZE_MODE==="cpu") return Math.max(0.002,t.cpu||0);
+  if(SIZE_MODE==="mem") return Math.max(1,t.mem||0);
+  return Math.max(1,t.desired||0);
+}
+function unhealthy(t){return t.desired>0 && t.ready<t.desired;}
+function fmtCpu(c){return c>=1?c.toFixed(2)+" core":Math.round(c*1000)+" m";}
+function fmtMem(b){return b>=1073741824?(b/1073741824).toFixed(1)+" Gi":Math.round(b/1048576)+" Mi";}
+function updateLegend(){
+  const L=document.getElementById("legend");
+  if(COLOR_MODE==="health"){
+    L.innerHTML=`<span><i style="background:${C_GREEN}"></i>정상</span><span><i style="background:${C_AMBER}"></i>degraded</span>`+
+      `<span><i style="background:${C_RED}"></i>down</span><span><i style="background:${C_GRAY}"></i>scaled 0</span>`;
+  }else{
+    const lo=heat(0),mid=heat(.5),hi=heat(1);
+    L.innerHTML=`<span class="muted">${COLOR_MODE==="cpu"?"CPU":"Mem"} 사용량</span>`+
+      `<span style="display:inline-block;width:90px;height:9px;border-radius:3px;background:linear-gradient(90deg,${lo},${mid},${hi})"></span>`+
+      `<span class="muted">낮음→높음</span><span><i style="background:${C_RED};border:1px solid #fff"></i>장애=흰테두리</span>`;
+  }
+}
+
 // squarified treemap
 function squarify(items,x,y,w,h){
   const out=[];const total=items.reduce((s,i)=>s+i.value,0)||1;let a={x,y,w,h};
@@ -135,6 +182,7 @@ function showTip(e,t){const[st,cc]=wlStatus(t);
   tip.innerHTML=`<b>${esc(t.name)}</b> <span class="k">${t.kind}</span><br>`+
     `<span class="k">${esc(t.cluster)} / ${esc(t.namespace)}</span><br>`+
     `replica <b>${t.ready}/${t.desired}</b> · <span style="color:${wlColor(t)}">${st}</span><br>`+
+    `CPU <b>${fmtCpu(t.cpu||0)}</b> · Mem <b>${fmtMem(t.mem||0)}</b><br>`+
     `<span class="k">클릭 → 네임스페이스 상세·로그</span>`;}
 
 let SVG,W,H;
@@ -143,6 +191,10 @@ function render(data){
   if(data.error){err.style.display="flex";err.textContent="데이터 소스 오류: "+data.error;return;}
   err.style.display="none";
   const tiles=data.tiles||[];const alerts=data.ns_alerts||{};
+  LAST=data;
+  _maxCpu=Math.max(0.001,...tiles.map(t=>t.cpu||0));
+  _maxMem=Math.max(1,...tiles.map(t=>t.mem||0));
+  updateLegend();
   const r=SVG.getBoundingClientRect();W=r.width;H=r.height;SVG.setAttribute("viewBox",`0 0 ${W} ${H}`);
   document.getElementById("meta").textContent=`클러스터 ${(data.clusters||[]).length} · 워크로드 ${tiles.length} · ${new Date().toLocaleTimeString()}`;
   if(!tiles.length){err.style.display="flex";err.textContent="표시할 워크로드 없음";return;}
@@ -150,17 +202,18 @@ function render(data){
   // group: cluster -> namespace -> [workloads]
   const byCl={};
   for(const t of tiles){(byCl[t.cluster]=byCl[t.cluster]||{});(byCl[t.cluster][t.namespace]=byCl[t.cluster][t.namespace]||[]).push(t);}
-  const sz=t=>Math.max(1,t.desired);
+  const sz=tileSize;
   const clItems=Object.entries(byCl).map(([c,nss])=>({value:Object.values(nss).flat().reduce((s,t)=>s+sz(t),0),data:{c,nss}}))
     .sort((a,b)=>b.value-a.value);
 
   for(const cr of squarify(clItems,GAP,GAP,W-2*GAP,H-2*GAP)){
     const{c,nss}=cr.data;
     SVG.appendChild(rect("cl-box",cr.x,cr.y,cr.w,cr.h,null,6));
+    SVG.appendChild(rect("cl-bar",cr.x+1,cr.y+1,cr.w-2,CL_HEAD-3,null,5));
     const wls=Object.values(nss).flat();
-    SVG.appendChild(text("cl-label",cr.x+10,cr.y+16,c.toUpperCase()));
-    const stat=`${Object.keys(nss).length} ns · ${wls.length} wl`;
-    SVG.appendChild(text("cl-stat",cr.x+cr.w-10,cr.y+16,stat).also(t=>t.setAttribute("text-anchor","end")));
+    SVG.appendChild(text("cl-label",cr.x+11,cr.y+17,c.toUpperCase()));
+    const stat=`${Object.keys(nss).length} ns · ${wls.length} workloads`;
+    SVG.appendChild(text("cl-stat",cr.x+cr.w-11,cr.y+17,stat).also(t=>t.setAttribute("text-anchor","end")));
     const ix=cr.x+GAP,iy=cr.y+CL_HEAD,iw=cr.w-2*GAP,ih=cr.h-CL_HEAD-GAP;
     if(iw<=2||ih<=2)continue;
     const nsItems=Object.entries(nss).map(([n,ws])=>({value:ws.reduce((s,t)=>s+sz(t),0),data:{n,ws}})).sort((a,b)=>b.value-a.value);
@@ -176,12 +229,14 @@ function render(data){
       if(ww<=1||wh<=1)continue;
       const wlItems=ws.map(t=>({value:sz(t),data:t})).sort((a,b)=>b.value-a.value);
       for(const w of squarify(wlItems,wx,wy,ww,wh)){
-        const t=w.data;const g=document.createElementNS(NS,"g");
-        g.appendChild(rect("wl",w.x+.6,w.y+.6,w.w-1.2,w.h-1.2,wlColor(t),2.5).also(r=>r.setAttribute("stroke","rgba(0,0,0,.35)")));
-        if(w.w>42&&w.h>22){
-          const nm=t.name.length*6>w.w-8?t.name.slice(0,Math.max(3,(w.w-8)/6|0))+"…":t.name;
-          g.appendChild(text("wl-label",w.x+5,w.y+14,nm,Math.min(12,w.w/7)));
-          if(w.h>34)g.appendChild(text("wl-sub",w.x+5,w.y+26,`${t.ready}/${t.desired}`,10));
+        const t=w.data;const g=document.createElementNS(NS,"g");const uh=unhealthy(t);
+        g.appendChild(rect("wl",w.x+.6,w.y+.6,w.w-1.2,w.h-1.2,tileFill(t),2.5).also(r=>{
+          r.setAttribute("stroke",uh?"#ffffff":"rgba(0,0,0,.35)");r.setAttribute("stroke-width",uh?1.6:.8);}));
+        if(w.w>40&&w.h>20){
+          const fs=Math.max(10,Math.min(13,w.w/6.5));
+          const nm=t.name.length*fs*.56>w.w-10?t.name.slice(0,Math.max(3,((w.w-10)/(fs*.56))|0))+"…":t.name;
+          g.appendChild(text("wl-label",w.x+6,w.y+fs+3,nm,fs));
+          if(w.h>36)g.appendChild(text("wl-sub",w.x+6,w.y+fs+16,`${t.ready}/${t.desired}`,Math.max(9.5,fs-2)));
         }
         g.addEventListener("mousemove",e=>showTip(e,t));
         g.addEventListener("mouseleave",()=>tip.style.display="none");
@@ -207,7 +262,7 @@ async function openPanel(cluster,ns,focus){
   const bad=wl.filter(w=>!w.healthy).length;
   document.getElementById("p-sub").innerHTML=`워크로드 ${wl.length} · 문제 ${bad} · 알림 ${fa.length} · 인시던트 ${inc.length}`;
 
-  let h="";
+  let h=`<button class="btn-an" id="an-btn" onclick="runAnalyze('${cluster}','${ns}')">⚡ 이 네임스페이스 지금 분석 (Bedrock)</button><div id="an-result"></div>`;
   // 워크로드
   h+=sec("워크로드",wl.length,wl.map(w=>{
     const[st,cc]=wlStatus(w);
@@ -221,6 +276,14 @@ async function openPanel(cluster,ns,focus){
      ${p.last_reason?`<span class="pill red">${esc(p.last_reason)}</span>`:""}
      ${p.restarts?`<span class="val">↻ ${p.restarts}</span>`:""}
      <span class="pill ${p.ready?'amber':'red'}">${p.ready?'not-ready*':'not-ready'}</span></div>`).join(""));
+  // 파드 (Phase D)
+  const pods=d.pods||[];
+  if(pods.length)h+=sec("파드",pods.length,`<div style="max-height:260px;overflow:auto">`+pods.map(p=>
+    `<div class="row"><span class="dot" style="background:${p.ready?C_GREEN:(p.phase==='Running'?C_AMBER:C_RED)}"></span>
+     <span class="nm">${esc(p.pod)}</span>
+     ${p.restarts?`<span class="val">↻${p.restarts}</span>`:""}
+     <span class="val">${fmtCpu(p.cpu||0)}</span><span class="val">${fmtMem(p.mem||0)}</span>
+     <span class="pill ${p.ready?'green':'amber'}">${esc(p.phase)}</span></div>`).join("")+`</div>`);
   // 발화 알림
   if(fa.length)h+=sec("발화 알림",fa.length,fa.map(a=>
     `<div class="row"><span class="dot" style="background:${a.severity==='critical'?colorOf('red'):colorOf('amber')}"></span>
@@ -249,6 +312,29 @@ function okmsg(m){return `<div class="ok">✓ ${m}</div>`;}
 function colorOf(c){return {red:C_RED,amber:C_AMBER,green:C_GREEN,gray:C_GRAY}[c]||C_GRAY;}
 function closePanel(){document.getElementById("panel").classList.remove("open");history.replaceState(null,"",location.pathname);}
 function fromHash(){const m=location.hash.match(/ns=([^/]+)\/(.+)/);if(m)openPanel(decodeURIComponent(m[1]),decodeURIComponent(m[2]));}
+
+function cf(c){return c==="high"?"green":c==="medium"?"amber":"red";}
+async function runAnalyze(cluster,ns){
+  const btn=document.getElementById("an-btn"),res=document.getElementById("an-result");
+  btn.disabled=true;btn.textContent="⏳ Bedrock 분석 중… (최대 ~20s)";
+  try{
+    const d=await(await fetch(`/api/analyze/${encodeURIComponent(cluster)}/${encodeURIComponent(ns)}`,{method:"POST"})).json();
+    const r=d.report||{};
+    res.innerHTML=`<div style="border:1px solid var(--accent);border-radius:10px;padding:13px 14px;margin-top:10px;background:rgba(76,141,255,.06)">
+      <div style="font-weight:700;margin-bottom:6px">⚡ 온디맨드 RCA <span class="pill ${cf(r.overall_confidence)}">conf ${r.overall_confidence||'?'}</span></div>
+      <div>${esc(r.summary||'')}</div>`+
+      (r.root_cause_hypotheses||[]).map(h=>`<div class="row" style="margin-top:8px"><span class="nm">${esc(h.cause)}</span><span class="pill ${cf(h.confidence)}">${h.confidence}</span></div>`).join("")+
+      ((r.suggested_actions||[]).length?`<div style="margin-top:8px"><span class="muted">제안</span><ul style="margin:4px 0 0;padding-left:18px">`+r.suggested_actions.map(a=>`<li>${esc(a)}</li>`).join("")+`</ul></div>`:"")+
+      `<div class="muted" style="margin-top:7px">→ Slack #test 발송 · 인시던트 ${esc(d.incident_id||'')}</div></div>`;
+  }catch(e){res.innerHTML=`<div class="ok">분석 실패 — 로그 확인</div>`;}
+  btn.disabled=false;btn.textContent="⚡ 다시 분석";
+}
+
+// 색/크기 토글
+document.querySelectorAll('[data-color]').forEach(b=>b.onclick=()=>{
+  COLOR_MODE=b.dataset.color;document.querySelectorAll('[data-color]').forEach(x=>x.classList.toggle('on',x===b));if(LAST)render(LAST);});
+document.querySelectorAll('[data-size]').forEach(b=>b.onclick=()=>{
+  SIZE_MODE=b.dataset.size;document.querySelectorAll('[data-size]').forEach(x=>x.classList.toggle('on',x===b));if(LAST)render(LAST);});
 
 async function tick(){try{render(await(await fetch("/api/fleet")).json());}catch(e){}}
 tick().then(fromHash);

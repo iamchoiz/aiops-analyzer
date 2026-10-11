@@ -47,30 +47,47 @@ def _by(result: list[dict], *labels: str) -> dict[tuple, float]:
 # ──────────────────────────── L0 플릿 스냅샷 (워크로드 타일) ────────────────────────────
 # finviz 구조: 클러스터(섹터) → 네임스페이스(산업) → 워크로드 타일(종목).
 # 타일 = 워크로드 1개(replica 여러개여도 하나). 크기 = replica 수, 색 = ready/desired 헬스.
+_KIND = {"deployment": "Deployment", "statefulset": "StatefulSet", "daemonset": "DaemonSet",
+         "replicaset": "ReplicaSet", "job": "Job", "rollout": "Rollout"}
+_REL = "namespace_workload_pod:kube_pod_owner:relabel"   # pod→workload (Deployment/STS/DS/Rollout 전부 커버)
+
+
 def fleet_snapshot() -> dict[str, Any]:
+    # 타일 소스 = relabel 룰(모든 워크로드 타입 포함 — Argo Rollout 도). desired=현재 파드수, ready=ready 파드수.
     try:
-        dep_d = _by(_q("kube_deployment_spec_replicas"), "cluster", "namespace", "deployment")
-        dep_a = _by(_q("kube_deployment_status_replicas_available"), "cluster", "namespace", "deployment")
-        sts_d = _by(_q("kube_statefulset_replicas"), "cluster", "namespace", "statefulset")
-        sts_r = _by(_q("kube_statefulset_status_replicas_ready"), "cluster", "namespace", "statefulset")
-        ds_d = _by(_q("kube_daemonset_status_desired_number_scheduled"), "cluster", "namespace", "daemonset")
-        ds_r = _by(_q("kube_daemonset_status_number_ready"), "cluster", "namespace", "daemonset")
+        total = _by(_q(f"count by (cluster,namespace,workload,workload_type) ({_REL})"),
+                    "cluster", "namespace", "workload", "workload_type")
+        ready = _by(_q(f'count by (cluster,namespace,workload,workload_type) '
+                       f'((kube_pod_status_ready{{condition="true"}} == 1) '
+                       f'* on(cluster,namespace,pod) group_left(workload,workload_type) {_REL})'),
+                    "cluster", "namespace", "workload", "workload_type")
         alerts = _by(_q('count by (cluster,namespace) (ALERTS{alertstate="firing"})'), "cluster", "namespace")
     except Exception as e:
         return {"error": f"{type(e).__name__}: {e}", "clusters": [], "tiles": []}
 
     tiles: list[dict] = []
-
-    def add(kind, src_d, src_r):
-        for (cluster, ns, name), desired in src_d.items():
-            ready = int(src_r.get((cluster, ns, name), 0))
-            tiles.append({"cluster": cluster, "namespace": ns, "kind": kind, "name": name,
-                          "desired": int(desired), "ready": ready})
-
-    add("Deployment", dep_d, dep_a)
-    add("StatefulSet", sts_d, sts_r)
-    add("DaemonSet", ds_d, ds_r)
+    for (cluster, ns, wl, wtype), tot in total.items():
+        tiles.append({"cluster": cluster, "namespace": ns,
+                      "kind": _KIND.get((wtype or "").lower(), wtype or "Workload"), "name": wl,
+                      "desired": int(tot), "ready": int(ready.get((cluster, ns, wl, wtype), 0))})
     tiles.sort(key=lambda t: (t["cluster"], t["namespace"], t["name"]))
+
+    # 워크로드별 CPU/Mem (pod→workload join 레코딩룰). best-effort — 실패해도 헬스 타일은 유지.
+    cpu = mem = cpu_req = mem_req = {}
+    try:
+        join = "* on(cluster,namespace,pod) group_left(workload) namespace_workload_pod:kube_pod_owner:relabel"
+        cpu = _by(_q(f'sum by (cluster,namespace,workload) (rate(container_cpu_usage_seconds_total{{container!="",container!="POD"}}[5m]) {join})'), "cluster", "namespace", "workload")
+        mem = _by(_q(f'sum by (cluster,namespace,workload) (container_memory_working_set_bytes{{container!="",container!="POD"}} {join})'), "cluster", "namespace", "workload")
+        cpu_req = _by(_q(f'sum by (cluster,namespace,workload) (kube_pod_container_resource_requests{{resource="cpu"}} {join})'), "cluster", "namespace", "workload")
+        mem_req = _by(_q(f'sum by (cluster,namespace,workload) (kube_pod_container_resource_requests{{resource="memory"}} {join})'), "cluster", "namespace", "workload")
+    except Exception:
+        pass
+    for t in tiles:
+        k = (t["cluster"], t["namespace"], t["name"])
+        t["cpu"] = round(cpu.get(k, 0.0), 4)          # cores
+        t["mem"] = int(mem.get(k, 0))                  # bytes
+        t["cpu_req"] = round(cpu_req.get(k, 0.0), 4)
+        t["mem_req"] = int(mem_req.get(k, 0))
 
     clusters = sorted({t["cluster"] for t in tiles})
     ns_alerts = {f"{c}/{n}": int(v) for (c, n), v in alerts.items()}
@@ -93,6 +110,7 @@ def namespace_detail(cluster: str, namespace: str) -> dict[str, Any]:
         out["workloads"] = _workloads(f)
         out["problem_pods"] = _problem_pods(f)
         out["firing_alerts"] = _firing_alerts(f)
+        out["pods"] = _all_pods(f)
     except Exception as e:
         out["error"] = f"{type(e).__name__}: {e}"
     # 로그는 별도 소스(Loki) — 실패해도 나머지는 유지
@@ -101,20 +119,16 @@ def namespace_detail(cluster: str, namespace: str) -> dict[str, Any]:
 
 
 def _workloads(f: str) -> list[dict]:
-    dep_d = _by(_q(f"kube_deployment_spec_replicas{{{f}}}"), "deployment")
-    dep_a = _by(_q(f"kube_deployment_status_replicas_available{{{f}}}"), "deployment")
-    sts_d = _by(_q(f"kube_statefulset_replicas{{{f}}}"), "statefulset")
-    sts_r = _by(_q(f"kube_statefulset_status_replicas_ready{{{f}}}"), "statefulset")
-    ds_d = _by(_q(f"kube_daemonset_status_desired_number_scheduled{{{f}}}"), "daemonset")
-    ds_r = _by(_q(f"kube_daemonset_status_number_ready{{{f}}}"), "daemonset")
-
+    # relabel 룰 기반 — Deployment/STS/DS/Rollout 전부 커버.
+    total = _by(_q(f"count by (workload,workload_type) ({_REL}{{{f}}})"), "workload", "workload_type")
+    ready = _by(_q(f'count by (workload,workload_type) '
+                   f'((kube_pod_status_ready{{{f},condition="true"}} == 1) '
+                   f'* on(cluster,namespace,pod) group_left(workload,workload_type) {_REL}{{{f}}})'),
+                "workload", "workload_type")
     items = []
-    for (name,), desired in sorted(dep_d.items()):
-        items.append(_wl("Deployment", name, int(dep_a.get((name,), 0)), int(desired)))
-    for (name,), desired in sorted(sts_d.items()):
-        items.append(_wl("StatefulSet", name, int(sts_r.get((name,), 0)), int(desired)))
-    for (name,), desired in sorted(ds_d.items()):
-        items.append(_wl("DaemonSet", name, int(ds_r.get((name,), 0)), int(desired)))
+    for (name, wtype), tot in sorted(total.items()):
+        items.append(_wl(_KIND.get((wtype or "").lower(), wtype or "Workload"), name,
+                         int(ready.get((name, wtype), 0)), int(tot)))
     return items
 
 
@@ -143,6 +157,25 @@ def _problem_pods(f: str) -> list[dict]:
         out.append({"pod": pod, "ready": rd == 1, "restarts": rs, "last_reason": reason})
     out.sort(key=lambda p: (p["ready"], -p["restarts"]))   # not-ready 먼저, 재시작 많은 순
     return out[:20]
+
+
+def _all_pods(f: str) -> list[dict]:
+    """ns 전체 파드 — 상태·재시작·CPU·Mem (Phase D 파드 레벨)."""
+    ready = _by(_q(f'kube_pod_status_ready{{{f},condition="true"}}'), "pod")
+    restarts = _by(_q(f"sum by (pod) (kube_pod_container_status_restarts_total{{{f}}})"), "pod")
+    phase = {}
+    for s in _q(f"kube_pod_status_phase{{{f}}} == 1"):
+        phase[s["metric"].get("pod")] = s["metric"].get("phase")
+    cpu = _by(_q(f'sum by (pod) (rate(container_cpu_usage_seconds_total{{{f},container!="",container!="POD"}}[5m]))'), "pod")
+    mem = _by(_q(f'sum by (pod) (container_memory_working_set_bytes{{{f},container!="",container!="POD"}})'), "pod")
+    out = []
+    for key in sorted(set(ready) | {(p,) for p in phase if p}):
+        pod = key[0]
+        out.append({"pod": pod, "ready": int(ready.get((pod,), 0)) == 1,
+                    "phase": phase.get(pod, "?"), "restarts": int(restarts.get((pod,), 0)),
+                    "cpu": round(cpu.get((pod,), 0.0), 3), "mem": int(mem.get((pod,), 0))})
+    out.sort(key=lambda p: (p["ready"], -p["restarts"]))
+    return out[:60]
 
 
 def _firing_alerts(f: str) -> list[dict]:

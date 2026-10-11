@@ -6,13 +6,14 @@ UI 콘솔(§3): 나스닥 히트맵 — /ui 정적 서빙 + /api/incidents 데�
 from __future__ import annotations
 
 import pathlib
+import secrets
 import time
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException
-from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import gates, slack
+from . import auth, gates, slack
 from .analyzer import analyze
 from .config import config
 from .context_pack import build_context_pack
@@ -25,6 +26,50 @@ _WEB_DIR = pathlib.Path(__file__).resolve().parent.parent / "web"
 
 def _now() -> float:
     return time.time()
+
+
+# ──────────────────────────── GitHub SSO ────────────────────────────
+@app.middleware("http")
+async def auth_guard(request: Request, call_next):
+    if auth.enabled() and not auth.is_open_path(request.url.path):
+        login = auth.verify_session(request.cookies.get(auth.COOKIE))
+        if not auth.is_allowed(login):
+            if request.url.path.startswith("/api"):
+                return JSONResponse({"error": "unauthorized"}, status_code=401)
+            return RedirectResponse(url="/login")
+    return await call_next(request)
+
+
+@app.get("/login")
+async def login():
+    if not auth.enabled():
+        return RedirectResponse(url="/ui/")
+    state = secrets.token_urlsafe(16)
+    resp = RedirectResponse(url=auth.login_url(state))
+    resp.set_cookie("oauth_state", state, max_age=600, httponly=True, secure=True, samesite="lax")
+    return resp
+
+
+@app.get("/auth/callback")
+async def auth_callback(code: str = "", state: str = "", request: Request = None):
+    if not (code and state and state == request.cookies.get("oauth_state")):
+        return Response("invalid oauth state", status_code=400)
+    token = auth.exchange_code(code)
+    gh_login = auth.fetch_login(token) if token else None
+    if not auth.is_allowed(gh_login):
+        return Response(f"접근 거부: {gh_login or 'unknown'} 는 허용되지 않은 계정입니다.", status_code=403)
+    resp = RedirectResponse(url="/ui/fleet.html")
+    resp.set_cookie(auth.COOKIE, auth.make_session(gh_login), max_age=auth.SESSION_TTL,
+                    httponly=True, secure=True, samesite="lax")
+    resp.delete_cookie("oauth_state")
+    return resp
+
+
+@app.get("/logout")
+async def logout():
+    resp = RedirectResponse(url="/login")
+    resp.delete_cookie(auth.COOKIE)
+    return resp
 
 
 def _process(incident: Incident) -> None:
@@ -133,6 +178,44 @@ async def api_fleet_detail(cluster: str, namespace: str):
         if inc.cluster == cluster and inc.namespace == namespace
     ]
     return detail
+
+
+@app.post("/api/analyze/{cluster}/{namespace}")
+def api_analyze(cluster: str, namespace: str):
+    """온디맨드 분석(Phase D) — ns 현재 상태로 Bedrock RCA. 동기(threadpool)."""
+    from . import fleet
+    from .models import Alert, Severity
+    detail = fleet.namespace_detail(cluster, namespace)
+    detail["incidents"] = []
+
+    alerts = [Alert(status="firing", labels={"alertname": a["alertname"], "severity": a.get("severity", "warning"),
+                                             "cluster": cluster, "namespace": namespace})
+              for a in detail.get("firing_alerts", [])]
+    for p in detail.get("problem_pods", []):
+        alerts.append(Alert(status="firing", labels={"alertname": "PodUnhealthy", "severity": "critical" if not p["ready"] else "warning",
+                                                     "cluster": cluster, "namespace": namespace, "pod": p["pod"],
+                                                     "reason": p.get("last_reason") or ""}))
+    if not alerts:
+        alerts = [Alert(status="firing", labels={"alertname": "OnDemandCheck", "severity": "none",
+                                                 "cluster": cluster, "namespace": namespace})]
+    sev = Severity.critical if any(a.severity == "critical" for a in alerts) else (
+        Severity.warning if any(a.severity == "warning" for a in alerts) else Severity.none)
+
+    now = _now()
+    inc = Incident(id=f"OND-{int(now)}", signature=f"ondemand/{cluster}/{namespace}", severity=sev,
+                   status="firing", created_at=now, updated_at=now, cluster=cluster, namespace=namespace,
+                   alerts=alerts, alert_names=sorted({a.name for a in alerts}))
+
+    pack = build_context_pack(inc)
+    pack["namespace_state"] = {k: detail.get(k) for k in ("workloads", "problem_pods", "pods", "firing_alerts", "logs")}
+    try:
+        report = analyze(inc, pack)
+    except Exception as e:
+        report = _degraded_report(inc, e)
+    gates.incidents._incidents[inc.id] = inc        # 저장(히트맵·drill 에 노출)
+    gates.reports.set(inc.id, report.model_dump())
+    slack.post(inc, report)
+    return {"incident_id": inc.id, "report": report.model_dump()}
 
 
 @app.get("/metrics", response_class=PlainTextResponse)

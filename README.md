@@ -73,6 +73,9 @@ Grafana 패널이 아니라 엔진 소유 데이터를 엔진이 직접 그린�
 
 ---
 
+## 보안·상호작용
+- **GitHub SSO** — 네이티브 OAuth(`aiops_client_id/secret`), UI 는 로그인 필수(/healthz·/webhook 제외). 색/크기 토글(헬스·CPU·메모리 heatmap), ns 클릭 drill-down(워크로드·파드·알림·로그·온디맨드 Bedrock 분석)
+
 ## 로컬 실행
 
 ```bash
