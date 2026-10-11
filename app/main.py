@@ -79,16 +79,37 @@ def _process(incident: Incident) -> None:
         print(f"[g4-skip] {incident.id}: {reason}")
         return
     pack = build_context_pack(incident)
-    try:
-        report = analyze(incident, pack)
-    except Exception as e:
-        # 분석 실패(Bedrock 장애·쿼터·권한 등)는 조용히 묻지 않는다 — degraded 리포트로 가시화
-        report = _degraded_report(incident, e)
-        print(f"[analyze-error] {incident.id}: {type(e).__name__}: {e}")
+    # G3 유사도 — 과거와 충분히 유사하면(재발) 풀 분석 없이 과거 결론으로 즉답
+    from . import memory
+    vec = memory.embed(memory.signature_text(incident, pack))
+    similar = memory.find_similar(vec)
+    if similar:
+        report = _recurrence_report(incident, similar)
+        print(f"[recurrence] {incident.id} ~ {similar['incident_id']} sim={similar['similarity']} (Bedrock 스킵)")
+    else:
+        try:
+            report = analyze(incident, pack)
+        except Exception as e:
+            report = _degraded_report(incident, e)
+            print(f"[analyze-error] {incident.id}: {type(e).__name__}: {e}")
+        memory.remember(incident, report, vec, _now())        # 새 인시던트만 기억(재발 중복 적재 방지)
     gates.reports.set(incident.id, report.model_dump())      # §3 UI drill-down 소스
     slack.post(incident, report)
     print(f"[done] {incident.id} confidence={report.overall_confidence} "
           f"needs_investigation={report.needs_investigation}")
+
+
+def _recurrence_report(incident: Incident, similar: dict) -> AnalysisReport:
+    return AnalysisReport(
+        summary=f"🔁 과거 유사 인시던트 재발 — {similar['incident_id']} 와 유사도 {similar['similarity']}. "
+                f"당시 결론: {similar['summary']}",
+        overall_confidence=similar.get("confidence", "low"),
+        root_cause_hypotheses=[],
+        suggested_actions=["동일 패턴 — 과거 조치 참고",
+                           "다른 원인으로 의심되면 '지금 분석'(풀 재분석)으로 덮어쓰기"],
+        data_gaps=[f"재발 추정(유사도 {similar['similarity']}) — 풀 분석 스킵됨. 확실히 하려면 재분석."],
+        needs_investigation=False,
+    )
 
 
 def _degraded_report(incident: Incident, err: Exception) -> AnalysisReport:
@@ -231,6 +252,8 @@ def api_analyze(cluster: str, namespace: str):
     except Exception as e:
         report = _degraded_report(inc, e)
     # 온디맨드는 일회성 분석 — firing 인시던트로 저장하지 않는다(히트맵/상황판에 안 꺼지는 문제 방지).
+    from . import memory
+    memory.remember(inc, report, memory.embed(memory.signature_text(inc, pack)), now)  # 메모리엔 적재(재발 매칭용)
     slack.post(inc, report)
     return {"incident_id": inc.id, "report": report.model_dump()}
 

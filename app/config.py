@@ -25,6 +25,12 @@ class Config:
     max_context_tokens: int = _int("MAX_CONTEXT_TOKENS", 40_000)
     # Context Pack 보강(ArgoCD·k8s Events). 로컬/mock 은 off, 클러스터 배포 시 on.
     enrich_enabled: bool = os.environ.get("ENRICH", "false").lower() == "true"
+    # G3 유사도 캐시 (S3 Vectors + Titan 임베딩)
+    memory_enabled: bool = os.environ.get("MEMORY_ENABLED", "false").lower() == "true"
+    s3vectors_bucket: str = os.environ.get("S3VECTORS_BUCKET", "tle-aiops-memory")
+    s3vectors_index: str = os.environ.get("S3VECTORS_INDEX", "incidents")
+    embed_model: str = os.environ.get("EMBED_MODEL", "amazon.titan-embed-text-v2:0")
+    similarity_threshold: float = float(os.environ.get("SIMILARITY_THRESHOLD", "0.90"))
 
     # G1 fingerprint cooldown — 영속 스토리지 필수(§2-1). 지금은 in-memory(Phase 1 full 에서 PVC/Redis).
     cooldown_seconds: int = _int("G1_COOLDOWN_SECONDS", 3600)

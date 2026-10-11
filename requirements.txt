@@ -1,5 +1,5 @@
 fastapi>=0.115
 uvicorn[standard]>=0.30
 pydantic>=2.7
-boto3>=1.34
+boto3>=1.40        # s3vectors(S3 Vectors) 지원
 kubernetes>=29.0        # Context Pack recent_changes: k8s Events read (in-cluster, 미설치 시 graceful skip)
