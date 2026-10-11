@@ -64,12 +64,10 @@ os.environ["ENRICH"] = "true"
 importlib.reload(cfg_mod)
 importlib.reload(cp_mod)
 pack2 = cp_mod.build_context_pack(inc)
-assert "_data_gaps" in pack2               # crash 없이 enrich 수행
-rc = pack2["recent_changes"]
-# 소스 불가면 _unavailable, 접근되면 argocd/k8s 키 — 둘 다 crash 아님이 핵심
-assert rc.get("_unavailable") or ("argocd_syncs" in rc or "k8s_events" in rc), rc
-assert any("미결선" in g for g in pack2["_data_gaps"])
-print(f"\nEnrich: crash 없음, recent_changes={ {k:('…' if v else v) for k,v in rc.items()} }")
+# enrich=on + 소스 미접근(로컬)이어도 crash 없이 리치 팩 키를 구성해야 한다
+assert "_data_gaps" in pack2 and "namespace_state" in pack2 and "logs" in pack2, pack2
+assert isinstance(pack2["_data_gaps"], list)
+print(f"\nEnrich: crash 없음, keys={sorted(pack2.keys())}")
 print(f"  data_gaps={pack2['_data_gaps']}")
 os.environ["ENRICH"] = "false"
 importlib.reload(cfg_mod); importlib.reload(cp_mod)

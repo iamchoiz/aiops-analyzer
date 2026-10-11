@@ -1,14 +1,11 @@
 """Context Pack 빌더(§2-2) — 결정론적 코드. LLM 호출 전에 '계산된 사실'만 생성.
 
 덤프 금지: raw 로그/시계열은 넣지 않는다. 상한 초과 시 더 압축하지 더 밀어넣지 않음.
-
-지금(최소 슬라이스)은 (1) 인시던트 메타만 채운다. 나머지 블록은 seam 으로 비워두고
-Phase 1 full 에서 결선한다:
-  (2) Recent changes  — ArgoCD API sync 이력 + k8s Events (RCA 1순위 신호)
-  (3) 메트릭 baseline diff — Thanos 3쿼리(현재/어제/지난주)
-  (4) 로그 Drain3 템플릿 압축 — 신규/급증 템플릿만
-  (5) 토폴로지 스냅샷 — pod→node→svc→ingress→ALB→RDS 홉별 판정
-  (6) 메모리 RAG — 유사 과거 인시던트 + 족보/런북 (Phase 2, S3 Vectors)
+ENRICH=true(클러스터)면 on-demand 분석과 동일한 리치 소스를 채운다:
+  - recent_changes: ArgoCD sync + k8s Events (RCA 1순위)
+  - namespace_state: 워크로드·문제파드·파드·발화알림 (Thanos)
+  - logs: Loki 에러 로그 (ANSI 제거)
+아직 미수집(로드맵): metric baseline(어제/지난주 대비), topology 홉별 판정, Drain3 템플릿.
 """
 from __future__ import annotations
 
@@ -19,9 +16,8 @@ from .models import Incident
 
 
 def build_context_pack(incident: Incident) -> dict[str, Any]:
-    """인시던트 → LLM 에 줄 압축 컨텍스트(dict). 토큰 상한은 호출측에서 체크."""
+    """인시던트 → LLM 에 줄 압축 컨텍스트(dict). webhook·on-demand 공통 리치 팩."""
     pack: dict[str, Any] = {
-        # 1. 인시던트 메타 — '분석 시점 현재 상태' 명시(5분 전 스냅샷 자신만만 RCA 방지)
         "incident": {
             "id": incident.id,
             "severity": incident.severity.value,
@@ -32,10 +28,7 @@ def build_context_pack(incident: Incident) -> dict[str, Any]:
             "storm_mode": incident.storm,
             "alerts": [
                 {
-                    "name": a.name,
-                    "severity": a.severity,
-                    "status": a.status,
-                    "startsAt": a.startsAt,
+                    "name": a.name, "severity": a.severity, "status": a.status, "startsAt": a.startsAt,
                     "summary": a.annotations.get("summary") or a.annotations.get("description", ""),
                     "runbook": a.annotations.get("runbook_url", ""),
                     "labels": _slim_labels(a.labels),
@@ -43,20 +36,43 @@ def build_context_pack(incident: Incident) -> dict[str, Any]:
                 for a in incident.alerts
             ],
         },
-        # 2~6: seam. ENRICH=true 면 enrich 가 가능한 블록을 채우고 나머지는 data_gap 으로 표기.
-        "recent_changes": {"_todo": "ArgoCD sync diff + k8s Events (RCA 1순위)"},
-        "metrics_baseline_diff": {"_todo": "Thanos 현재/어제/지난주 3쿼리"},
-        "log_templates": {"_todo": "Drain3 신규/급증 템플릿만"},
-        "topology": {"_todo": "pod→node→svc→ingress→ALB→RDS 홉별 판정"},
-        "memory": {"_todo": "유사 인시던트 + 족보/런북 RAG (Phase 2)"},
     }
 
-    if config.enrich_enabled:
-        from . import enrich  # 지연 import — mock/로컬은 enrich 의존성 불필요
-        pack["_data_gaps"] = enrich.enrich(incident, pack)
+    if not config.enrich_enabled:
+        pack["namespace_state"] = {}
+        pack["logs"] = []
+        pack["_data_gaps"] = ["enrich 비활성(로컬/mock)"]
+        return pack
+
+    from . import enrich, fleet
+    gaps: list[str] = []
+
+    # 최근 변경 — ArgoCD sync + k8s Events
+    try:
+        pack["recent_changes"] = enrich._recent_changes(incident)
+    except Exception as e:
+        pack["recent_changes"] = {"_unavailable": f"{type(e).__name__}: {e}"}
+        gaps.append("recent_changes")
+
+    # ns 상태 + 로그 (on-demand 와 동일 소스 → 분석 품질·재발 시그니처 일치)
+    if incident.cluster and incident.namespace:
+        try:
+            d = fleet.namespace_detail(incident.cluster, incident.namespace)
+            pack["namespace_state"] = {k: d.get(k) for k in ("workloads", "problem_pods", "pods", "firing_alerts")}
+            logs = d.get("logs") or {}
+            pack["logs"] = logs.get("lines", [])
+            if logs.get("_unavailable"):
+                gaps.append("logs(Loki 불가)")
+        except Exception as e:
+            pack["namespace_state"] = {"_unavailable": str(e)[:120]}
+            pack["logs"] = []
+            gaps.append("namespace_state")
     else:
-        pack["_data_gaps"] = ["recent_changes", "metrics_baseline_diff",
-                              "log_templates", "topology", "memory"]
+        pack["namespace_state"] = {}
+        pack["logs"] = []
+
+    gaps += ["metric baseline(어제/지난주 대비)", "topology 홉별 판정"]   # 아직 미수집(로드맵)
+    pack["_data_gaps"] = gaps
     return pack
 
 
