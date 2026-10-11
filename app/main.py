@@ -16,7 +16,7 @@ from . import gates, slack
 from .analyzer import analyze
 from .config import config
 from .context_pack import build_context_pack
-from .models import AlertmanagerWebhook, Incident
+from .models import AlertmanagerWebhook, AnalysisReport, Incident
 
 app = FastAPI(title="AIOps Analyzer", version="0.1.0")
 
@@ -34,11 +34,27 @@ def _process(incident: Incident) -> None:
         print(f"[g4-skip] {incident.id}: {reason}")
         return
     pack = build_context_pack(incident)
-    report = analyze(incident, pack)
+    try:
+        report = analyze(incident, pack)
+    except Exception as e:
+        # 분석 실패(Bedrock 장애·쿼터·권한 등)는 조용히 묻지 않는다 — degraded 리포트로 가시화
+        report = _degraded_report(incident, e)
+        print(f"[analyze-error] {incident.id}: {type(e).__name__}: {e}")
     gates.reports.set(incident.id, report.model_dump())      # §3 UI drill-down 소스
     slack.post(incident, report)
     print(f"[done] {incident.id} confidence={report.overall_confidence} "
           f"needs_investigation={report.needs_investigation}")
+
+
+def _degraded_report(incident: Incident, err: Exception) -> AnalysisReport:
+    return AnalysisReport(
+        summary=f"⚠️ 자동 분석 실패 — {type(err).__name__}. 인시던트는 접수됨, 수동 조사 필요.",
+        overall_confidence="low",
+        root_cause_hypotheses=[],
+        suggested_actions=["analyzer 로그 확인", "Bedrock 모델 접근/쿼터 점검"],
+        data_gaps=[f"LLM 분석 불가: {str(err)[:200]}"],
+        needs_investigation=True,
+    )
 
 
 @app.post("/webhook")
@@ -95,6 +111,13 @@ async def api_incident_detail(incident_id: str):
     if inc is None:
         raise HTTPException(404, "incident not found")
     return {"incident": inc.model_dump(), "report": gates.reports.get(incident_id)}
+
+
+@app.get("/api/fleet")
+async def api_fleet():
+    """전체 현황 상황판(finviz 스타일) 데이터 — 전 클러스터 cluster/namespace 헬스(Thanos)."""
+    from . import fleet
+    return fleet.fleet_snapshot()
 
 
 @app.get("/metrics", response_class=PlainTextResponse)

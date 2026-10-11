@@ -58,13 +58,18 @@ Slack/UI 렌더링은 **코드가** 담당 — LLM 에 포맷팅을 맡기지 �
 
 ---
 
-## 나스닥 히트맵 UI 콘솔
+## UI 콘솔 (analyzer self-served, CDN 의존 없는 바닐라 SVG treemap)
 
-analyzer 가 FastAPI StaticFiles 로 직접 서빙하는 treemap — Grafana 패널이 아니라 엔진 소유 데이터를 엔진이 그린다.
+Grafana 패널이 아니라 엔진 소유 데이터를 엔진이 직접 그린다. 두 화면:
 
+**① 인시던트 히트맵** (`/ui/`) — 나스닥 스타일
 - 타일 **크기 = 영향범위**(묶인 알림 수), **색 = 상태**(critical 빨강 — 지속시간 길수록 진해짐 / warning 노랑 / resolved 초록)
 - 호버 = 요약, **타일 클릭 = Bedrock 리포트 슬라이드인**(증거 링크·confidence·배제 근거), `#inc=ID` 공유 딥링크
-- CDN 의존 없는 바닐라 SVG squarified treemap (CSP 안전). 3s 폴링(색 전환은 CSS transition)
+
+**② 전체 현황 상황판** (`/ui/fleet.html`) — finviz.com/map 스타일 그룹 treemap
+- **클러스터(sector) → 네임스페이스(stock)** 2단 그룹. 전 클러스터 kube-state-metrics(Thanos) 집계
+- **크기 = 파드 수**, **색 = 헬스**(not-ready 빨강 / firing 알림 주황 / 재시작 노랑 / 정상 초록)
+- 호버 툴팁 = ready/total·restarts(15m)·firing 알림. 5s 폴링
 
 ---
 
