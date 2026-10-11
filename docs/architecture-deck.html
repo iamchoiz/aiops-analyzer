@@ -1,0 +1,372 @@
+<title>AIOps Analyzer — 동작 원리</title>
+<style>
+  :root{
+    --bg:#f7f9fc; --bg2:#eef2f8; --surface:#ffffff; --surface2:#f3f6fa;
+    --border:#e5eaf1; --border2:#d3dae3; --text:#111823; --muted:#5b6675; --dim:#98a1ae;
+    --blue:#2d6ae0; --blue-dim:#9bb8f2;
+    --green:#1a9d62; --amber:#d98a1f; --red:#d6453d; --oxblood:#9a2a24;
+    --shadow:0 1px 2px rgba(17,24,35,.04),0 10px 30px -14px rgba(17,24,35,.18);
+    --shadow-sm:0 1px 2px rgba(17,24,35,.05),0 4px 14px -8px rgba(17,24,35,.14);
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html{color-scheme:light;scroll-behavior:smooth;}
+  body{background:var(--bg);color:var(--text);font-family:var(--sans);-webkit-font-smoothing:antialiased;overflow:hidden;}
+
+  .deck{display:flex;overflow-x:auto;overflow-y:hidden;height:100vh;scroll-snap-type:x mandatory;scrollbar-width:none;}
+  .deck::-webkit-scrollbar{display:none;}
+  .slide{flex:0 0 100vw;height:100vh;scroll-snap-align:center;display:flex;flex-direction:column;justify-content:center;
+    padding:clamp(28px,6vw,96px);position:relative;
+    background:radial-gradient(120% 90% at 100% 0%,var(--bg2),var(--bg) 55%);}
+  .wrap{width:100%;max-width:1080px;margin:0 auto;}
+
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--blue);
+    display:flex;align-items:center;gap:10px;margin-bottom:22px;font-weight:600;}
+  .eyebrow::before{content:"";width:26px;height:2px;background:var(--blue);border-radius:2px;}
+  h1{font-size:clamp(34px,6vw,70px);font-weight:800;letter-spacing:-.025em;line-height:1.03;text-wrap:balance;}
+  h2{font-size:clamp(26px,4vw,44px);font-weight:800;letter-spacing:-.022em;line-height:1.08;text-wrap:balance;margin-bottom:10px;}
+  .lead{font-size:clamp(16px,2vw,21px);color:var(--muted);line-height:1.6;max-width:62ch;margin-top:18px;}
+  .sub{color:var(--muted);font-size:15px;line-height:1.6;max-width:66ch;margin-bottom:28px;}
+  b,strong{color:var(--text);font-weight:700;}
+  .hl{color:var(--blue);} .hl-g{color:var(--green);} .hl-a{color:var(--amber);} .hl-r{color:var(--red);}
+
+  .chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:34px;}
+  .chip{font-family:var(--mono);font-size:12.5px;color:var(--muted);background:var(--surface);border:1px solid var(--border);
+    border-radius:999px;padding:7px 14px;box-shadow:var(--shadow-sm);}
+  .chip b{color:var(--text);font-weight:600;}
+
+  .grid{display:grid;gap:16px;margin-top:8px;}
+  .g2{grid-template-columns:repeat(2,1fr);} .g3{grid-template-columns:repeat(3,1fr);} .g4{grid-template-columns:repeat(4,1fr);}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:22px 22px 20px;position:relative;box-shadow:var(--shadow);}
+  .card .k{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);font-weight:600;}
+  .card h3{font-size:19px;font-weight:700;margin:10px 0 7px;letter-spacing:-.01em;}
+  .card p{color:var(--muted);font-size:14.5px;line-height:1.55;}
+  .card .ico{font-size:22px;line-height:1;}
+
+  .flow{display:flex;align-items:stretch;gap:0;margin-top:14px;flex-wrap:wrap;}
+  .stage{flex:1 1 0;min-width:150px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px 16px;
+    display:flex;flex-direction:column;gap:8px;position:relative;box-shadow:var(--shadow-sm);}
+  .stage .num{font-family:var(--mono);font-size:11px;color:var(--dim);font-weight:600;}
+  .stage .ti{font-size:15.5px;font-weight:700;letter-spacing:-.01em;}
+  .stage .de{font-size:12.5px;color:var(--muted);line-height:1.5;}
+  .stage.bedrock{border-color:var(--blue-dim);background:linear-gradient(180deg,rgba(45,106,224,.06),var(--surface));
+    box-shadow:0 10px 30px -16px rgba(45,106,224,.5);}
+  .arrow{flex:0 0 34px;display:flex;align-items:center;justify-content:center;color:var(--border2);font-size:22px;}
+  @media(max-width:860px){ .arrow{transform:rotate(90deg);height:26px;flex-basis:26px;} .flow{flex-direction:column;} .g3,.g4,.g2{grid-template-columns:1fr;} }
+
+  .flow-note{margin-top:22px;background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--blue);
+    border-radius:0 12px 12px 0;padding:14px 18px;color:var(--muted);font-size:14.5px;line-height:1.6;max-width:72ch;box-shadow:var(--shadow-sm);}
+  .flow-note b{color:var(--text);}
+
+  .ba{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:10px;}
+  @media(max-width:860px){.ba{grid-template-columns:1fr;}}
+  .ba .col{border-radius:16px;padding:24px;border:1px solid var(--border);background:var(--surface);box-shadow:var(--shadow);}
+  .ba .before{border-color:#f0d9d7;background:linear-gradient(180deg,#fdf5f4,var(--surface));}
+  .ba .after{border-color:#cfe9db;background:linear-gradient(180deg,#f1faf5,var(--surface));}
+  .ba h4{font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:14px;font-weight:700;}
+  .ba .before h4{color:var(--red);} .ba .after h4{color:var(--green);}
+  .ba ul{list-style:none;display:flex;flex-direction:column;gap:11px;}
+  .ba li{font-size:15px;color:var(--muted);line-height:1.5;padding-left:24px;position:relative;}
+  .ba li::before{position:absolute;left:0;top:0;font-weight:700;}
+  .ba .before li::before{content:"✕";color:var(--red);}
+  .ba .after li::before{content:"✓";color:var(--green);}
+  .ba li b{color:var(--text);}
+
+  .rca{display:grid;grid-template-columns:1fr 1.2fr;gap:18px;margin-top:8px;align-items:start;}
+  @media(max-width:860px){.rca{grid-template-columns:1fr;}}
+  .mono-box{font-family:var(--mono);font-size:12.5px;line-height:1.7;background:var(--surface2);border:1px solid var(--border);
+    border-radius:12px;padding:16px 18px;color:#44506a;overflow:auto;box-shadow:var(--shadow-sm);}
+  .mono-box .c{color:var(--dim);} .mono-box .ok{color:var(--green);} .mono-box .warn{color:#9a6a12;} .mono-box .er{color:#c23934;font-weight:600;}
+  .report{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px;box-shadow:var(--shadow);}
+  .report .badge{display:inline-block;font-family:var(--mono);font-size:11px;font-weight:700;padding:2px 9px;border-radius:20px;
+    background:rgba(26,157,98,.14);color:var(--green);margin-left:8px;}
+  .report .q{font-size:15.5px;line-height:1.6;color:var(--text);}
+  .report .lab{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin:16px 0 7px;font-weight:600;}
+  .report ul{list-style:none;display:flex;flex-direction:column;gap:7px;}
+  .report li{font-size:13.5px;color:var(--muted);padding-left:16px;position:relative;line-height:1.5;}
+  .report li::before{content:"•";position:absolute;left:0;color:var(--blue);}
+
+  .heat{display:grid;grid-template-columns:repeat(6,1fr);grid-auto-rows:46px;gap:5px;margin-top:8px;max-width:560px;}
+  .heat div{border-radius:6px;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:10px;
+    color:#fff;text-align:center;font-weight:600;box-shadow:var(--shadow-sm);padding:2px;}
+
+  .stack{display:flex;flex-direction:column;gap:10px;margin-top:8px;}
+  .layer{display:flex;align-items:center;gap:16px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 18px;box-shadow:var(--shadow-sm);}
+  .layer .tag{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--blue);min-width:92px;font-weight:600;}
+  .layer .d{color:var(--muted);font-size:14px;} .layer .d b{color:var(--text);}
+
+  .kpis{display:flex;gap:28px;flex-wrap:wrap;margin-top:30px;}
+  .kpi .n{font-size:40px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums;}
+  .kpi .l{font-size:13px;color:var(--muted);margin-top:2px;}
+
+  .topbar{position:fixed;top:0;left:0;right:0;height:3px;background:var(--border);z-index:20;}
+  .topbar .fill{height:100%;background:linear-gradient(90deg,var(--green),var(--amber),var(--red));width:0;transition:width .25s;}
+  .brand{position:fixed;top:20px;left:clamp(20px,5vw,40px);z-index:20;font-family:var(--mono);font-size:12px;letter-spacing:.1em;
+    color:var(--muted);display:flex;align-items:center;gap:8px;font-weight:600;}
+  .brand .dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px rgba(26,157,98,.18);}
+  .count{position:fixed;top:18px;right:clamp(20px,5vw,40px);z-index:20;font-family:var(--mono);font-size:12px;color:var(--muted);}
+  .count b{color:var(--text);}
+  .dots{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:20;display:flex;gap:9px;}
+  .dots button{width:9px;height:9px;border-radius:50%;border:none;background:var(--border2);cursor:pointer;padding:0;transition:.2s;}
+  .dots button.on{background:var(--blue);transform:scale(1.3);}
+  .dots button:focus-visible{outline:2px solid var(--blue);outline-offset:2px;}
+  .hint{position:fixed;bottom:20px;right:clamp(20px,5vw,40px);z-index:20;font-family:var(--mono);font-size:11px;color:var(--dim);}
+  .page-no{position:absolute;bottom:26px;left:clamp(28px,6vw,96px);font-family:var(--mono);font-size:12px;color:var(--dim);}
+
+  /* 내용은 기본 노출 — 애니메이션은 enhancement(IO 미동작/헤드리스에도 빈 화면 안 됨) */
+  .slide.vis .wrap>*{animation:rise .55s cubic-bezier(.4,0,.2,1) backwards;}
+  .slide.vis .wrap>*:nth-child(2){animation-delay:.06s;} .slide.vis .wrap>*:nth-child(3){animation-delay:.12s;}
+  .slide.vis .wrap>*:nth-child(4){animation-delay:.18s;} .slide.vis .wrap>*:nth-child(5){animation-delay:.24s;}
+  @keyframes rise{from{opacity:0;transform:translateY(16px);} to{opacity:1;transform:none;}}
+  @media(prefers-reduced-motion:reduce){.slide.vis .wrap>*{animation:none;} html{scroll-behavior:auto;}}
+</style>
+
+<div class="topbar"><div class="fill" id="fill"></div></div>
+<div class="brand"><span class="dot"></span>AIOPS ANALYZER</div>
+<div class="count"><b id="cur">01</b> / <span id="tot">10</span></div>
+
+<div class="deck" id="deck">
+
+  <section class="slide">
+    <div class="wrap">
+      <div class="eyebrow">Bedrock 기반 자동 장애 분석 엔진</div>
+      <h1>알림이 뜨면,<br><span class="hl">원인 분석까지 자동으로.</span></h1>
+      <p class="lead">쿠버네티스에서 알림이 발생하면 — 온콜이 Grafana 를 뒤지기 전에 —
+        분석 엔진이 <b>로그·메트릭·배포 이력</b>을 모아 <b>1차 원인 분석 리포트</b>를 Slack 과 상황판에 자동으로 붙여준다.</p>
+      <div class="chips">
+        <span class="chip"><b>LLM</b> = 분석만 (조치 0, read-only)</span>
+        <span class="chip"><b>Amazon Bedrock</b> · Claude Sonnet 4.6</span>
+        <span class="chip">허브 EKS self-host</span>
+        <span class="chip">finviz 스타일 상황판</span>
+      </div>
+    </div>
+    <div class="page-no">01 — 개요</div>
+  </section>
+
+  <section class="slide">
+    <div class="wrap">
+      <div class="eyebrow">왜 만들었나</div>
+      <h2>알림은 오는데, 원인은 사람이 찾는다</h2>
+      <p class="sub">메트릭·로그·배포 이력은 다 흩어져 있고, 새벽에 알림을 받은 사람이 매번 손으로 추적한다. 그 1차 추적을 엔진이 대신한다.</p>
+      <div class="ba">
+        <div class="col before">
+          <h4>지금까지</h4>
+          <ul>
+            <li>Slack 에 알림만 <b>"뭔가 터졌다"</b></li>
+            <li>온콜이 Grafana·Loki·ArgoCD 를 <b>직접 뒤짐</b></li>
+            <li>알림 폭풍이 오면 <b>어디가 진짜 원인</b>인지 안 보임</li>
+            <li>매번 같은 조사를 <b>처음부터</b></li>
+          </ul>
+        </div>
+        <div class="col after">
+          <h4>엔진 도입 후</h4>
+          <ul>
+            <li>알림에 <b>원인 가설 + 증거 링크</b>가 자동으로 붙음</li>
+            <li>수십 개 알림을 <b>인시던트 1건</b>으로 묶어 분석</li>
+            <li><b>상황판</b>에서 전 클러스터 상태를 한눈에</li>
+            <li>조사 과정을 그대로 보여줘 <b>10초 내 재검증</b></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="page-no">02 — 문제</div>
+  </section>
+
+  <section class="slide">
+    <div class="wrap">
+      <div class="eyebrow">전체 흐름 · 한 장 요약</div>
+      <h2>알림 → 리포트까지 다섯 단계</h2>
+      <div class="flow">
+        <div class="stage"><span class="num">입력</span><span class="ti">Alertmanager</span><span class="de">알림 발생 → webhook 즉시 수신(202)</span></div>
+        <div class="arrow">→</div>
+        <div class="stage"><span class="num">① 걸러내기</span><span class="ti">게이트</span><span class="de">중복 억제 · 인시던트로 묶기 · 예산 체크</span></div>
+        <div class="arrow">→</div>
+        <div class="stage"><span class="num">② 모으기</span><span class="ti">Context Pack</span><span class="de">로그·메트릭·배포 이력을 요약해 압축</span></div>
+        <div class="arrow">→</div>
+        <div class="stage bedrock"><span class="num">③ 분석</span><span class="ti">Bedrock</span><span class="de">원인 가설·증거·신뢰도 생성</span></div>
+        <div class="arrow">→</div>
+        <div class="stage"><span class="num">출력</span><span class="ti">Slack + 상황판</span><span class="de">리포트 발송 · 히트맵에 표시</span></div>
+      </div>
+      <div class="flow-note">
+        핵심은 <b>게이트</b>다. 알림 폭풍이 와도 싼 필터로 먼저 걸러서, <b>Bedrock 은 '진짜 인시던트'만</b> 분석한다 —
+        비용은 통제되고, LLM 은 압축된 사실 위에서 <b>합성(판단)만</b> 한다.
+      </div>
+    </div>
+    <div class="page-no">03 — 흐름도</div>
+  </section>
+
+  <section class="slide">
+    <div class="wrap">
+      <div class="eyebrow">설계 원칙 · 쉽게</div>
+      <h2>네 가지만 기억하면 된다</h2>
+      <div class="grid g2" style="margin-top:22px">
+        <div class="card"><div class="ico">🧠</div><h3>LLM 은 '분석가', '작업자'가 아니다</h3><p>원인을 추론할 뿐 조치는 절대 실행하지 않는다. 모든 데이터는 read-only. 틀린 자동조치의 위험을 원천 차단.</p></div>
+        <div class="card"><div class="ico">🧩</div><h3>알림이 아니라 '인시던트' 단위</h3><p>노드 1대가 죽으면 알림 35개 — 하지만 원인은 1개. 묶어서 한 번만 분석한다.</p></div>
+        <div class="card"><div class="ico">📊</div><h3>덤프하지 않고 '계산된 사실'만</h3><p>로그 수만 줄을 통째로 넣지 않는다. 신규/급증 패턴, 평소 대비 몇 배 — 요약해서 넣는다.</p></div>
+        <div class="card"><div class="ico">🔎</div><h3>결론보다 '조사 과정'을 보여준다</h3><p>가설마다 증거·신뢰도, 그리고 "무엇을 못 봤는지(data gaps)"까지. 틀린 고확신보다 정직한 불확실성.</p></div>
+      </div>
+    </div>
+    <div class="page-no">04 — 원칙</div>
+  </section>
+
+  <section class="slide">
+    <div class="wrap">
+      <div class="eyebrow">① 게이트 · 비용과 노이즈를 먼저 잡는다</div>
+      <h2>Bedrock 앞의 싼 필터 3단</h2>
+      <p class="sub">폭주는 평상시가 아니라 <b>장애 중</b>(알림 폭풍 = 호출 폭증)에 터진다. 그래서 LLM 전에 결정론적 코드로 거른다.</p>
+      <div class="grid g3">
+        <div class="card"><span class="k">G1 · 중복 억제</span><h3>같은 알림은 한 번만</h3><p>동일 알림이 12시간마다 재통지돼도 재분석하지 않는다. 해소되면 쿨다운 해제.</p></div>
+        <div class="card"><span class="k">G2 · 인시던트 조립</span><h3>관련 알림을 묶는다</h3><p>같은 클러스터·네임스페이스의 알림을 5분 창으로 하나의 인시던트로. 폭풍이면 "대규모 장애 모드".</p></div>
+        <div class="card"><span class="k">G4 · 예산</span><h3>돈이 새지 않게</h3><p>인시던트당 토큰 상한·일일 상한. 기본은 <b>critical 만 자동</b>, warning 은 필요할 때 수동.</p></div>
+      </div>
+      <div class="flow-note">걸러진 모든 알림은 <b>메트릭으로 기록</b>된다 — 억제 계층 자체도 관측 대상.</div>
+    </div>
+    <div class="page-no">05 — 게이트</div>
+  </section>
+
+  <section class="slide">
+    <div class="wrap">
+      <div class="eyebrow">② Context Pack · LLM 에 줄 '압축된 사실'</div>
+      <h2>흩어진 신호를 한 곳에 모은다</h2>
+      <p class="sub">게이트를 통과한 인시던트에 대해, 결정론적 코드가 아래를 모아 요약한다. 소스가 죽어도 멈추지 않고 "못 본 부분"으로 표시한다.</p>
+      <div class="grid g4">
+        <div class="card"><div class="ico">📜</div><h3>로그</h3><p>Loki — 에러·연결 실패 패턴을 넓게 검색, 색코드 제거 후 핵심만</p></div>
+        <div class="card"><div class="ico">📈</div><h3>메트릭</h3><p>Thanos — 전 클러스터 파드·워크로드·CPU/메모리·발화 알림</p></div>
+        <div class="card"><div class="ico">🚀</div><h3>배포 이력</h3><p>ArgoCD sync·k8s 이벤트 — 원인 1순위 신호(최근 배포)</p></div>
+        <div class="card"><div class="ico">🧾</div><h3>메타</h3><p>인시던트 현재 상태·묶인 알림·심각도</p></div>
+      </div>
+      <div class="flow-note"><b>멀티클러스터 트릭:</b> 엔진은 허브에 있어 스포크 API 를 직접 못 본다 →
+        전 클러스터로 이미 모이는 <b>Thanos(메트릭)·Loki(로그)</b>만 사용해 모든 클러스터를 커버.</div>
+    </div>
+    <div class="page-no">06 — 수집</div>
+  </section>
+
+  <section class="slide">
+    <div class="wrap">
+      <div class="eyebrow">③ 분석 · 실제 사례</div>
+      <h2>Bedrock 이 로그를 읽고 원인을 짚는다</h2>
+      <div class="rca">
+        <div class="mono-box"><span class="c"># Context Pack (요약)</span>
+incident: tle-api CrashLoopBackOff
+pod: tle-api-...-vwslp
+restarts: <span class="warn">3</span>  ready: now true
+<span class="c"># logs (Loki, 12h)</span>
+<span class="er">Prisma P1001: Can't reach
+database server (RDS:3306)</span>
+cpu: 0.0  mem: 72Mi</div>
+        <div class="report">
+          <div class="lab">결론 <span class="badge">confidence · high</span></div>
+          <p class="q">tle-api 가 시작 직후 <b>RDS MySQL 연결 실패(Prisma&nbsp;P1001)</b>로 반복 크래시 → CrashLoopBackOff.
+            현재는 회복(Ready)됐으나 RDS 접근 문제 해소는 미확인 — 재발 가능.</p>
+          <div class="lab">증거</div>
+          <ul><li>Loki 로그에 P1001 "Can't reach database" 반복</li><li>재시작 3회 — 외부 일시요인보다 내부 반복 오류 패턴</li><li>CPU 유휴 → OOM 가능성 낮음</li></ul>
+          <div class="lab">못 본 것 (data gaps)</div>
+          <ul><li>RDS 측 커넥션 한도 / 보안그룹 — 토폴로지 미수집</li></ul>
+        </div>
+      </div>
+      <div class="flow-note">신뢰는 결론이 아니라 <b>조사 과정</b>에서 나온다 — 증거·신뢰도·못 본 것을 전부 드러낸다. 리포트 렌더링은 코드가, LLM 은 데이터만.</div>
+    </div>
+    <div class="page-no">07 — 분석</div>
+  </section>
+
+  <section class="slide">
+    <div class="wrap">
+      <div class="eyebrow">상황판 · finviz 스타일 히트맵</div>
+      <h2>전 클러스터를 한 화면에</h2>
+      <p class="sub">주식 시장 지도처럼 — <b>클러스터 → 네임스페이스 → 워크로드</b>를 타일로. 크기는 규모(replica), 색은 부하/헬스. 평상시 초록, 이상만 빨강.</p>
+      <div class="rca" style="grid-template-columns:1fr 1fr">
+        <div>
+          <div class="heat" aria-hidden="true">
+            <div style="background:#1a9d62;grid-column:span 2;grid-row:span 2">online-boutique</div>
+            <div style="background:#d98a1f">kube-system</div>
+            <div style="background:#1a9d62">argocd</div>
+            <div style="background:#d6453d">thanos</div>
+            <div style="background:#1a9d62">loki</div>
+            <div style="background:#1a9d62;grid-column:span 2">typing-learn</div>
+            <div style="background:#3fa772">monitoring</div>
+            <div style="background:#1a9d62">kyverno</div>
+            <div style="background:#5cae5c">keda</div>
+          </div>
+        </div>
+        <div class="stack">
+          <div class="layer"><span class="tag">크기</span><span class="d">replica 수 — 규모 큰 서비스가 크게 (애드온은 작게, 서비스 강조)</span></div>
+          <div class="layer"><span class="tag">색</span><span class="d">CPU·메모리 부하 히트맵 또는 헬스 — <b>토글</b>로 전환</span></div>
+          <div class="layer"><span class="tag">필터</span><span class="d">클러스터별 · 네임스페이스 멀티선택</span></div>
+          <div class="layer"><span class="tag">클릭</span><span class="d">드릴다운 → 워크로드·파드·로그 + <b>"지금 분석"</b> 버튼</span></div>
+        </div>
+      </div>
+      <div class="flow-note">엔진이 가진 데이터를 <b>엔진이 직접</b> 웹으로 그린다 — Grafana 패널이 아니라 100% 통제되는 전용 콘솔.</div>
+    </div>
+    <div class="page-no">08 — 상황판</div>
+  </section>
+
+  <section class="slide">
+    <div class="wrap">
+      <div class="eyebrow">어디서 어떻게 도나</div>
+      <h2>배포 구조</h2>
+      <div class="stack" style="margin-top:20px">
+        <div class="layer"><span class="tag">런타임</span><span class="d"><b>허브 EKS</b> self-host · <b>Graviton(arm64)</b> 노드로 비용 절감 · FastAPI(Python)</span></div>
+        <div class="layer"><span class="tag">LLM</span><span class="d"><b>Amazon Bedrock</b> Claude Sonnet 4.6 · <b>Pod Identity</b>로 권한(키 없음)</span></div>
+        <div class="layer"><span class="tag">데이터</span><span class="d"><b>Thanos</b>(전 클러스터 메트릭) · <b>Loki</b>(전 클러스터 로그) — in-cluster 직결</span></div>
+        <div class="layer"><span class="tag">입력</span><span class="d"><b>Alertmanager</b> webhook (continue 복사 — 기존 Slack/PagerDuty 라우팅 유지)</span></div>
+        <div class="layer"><span class="tag">배포</span><span class="d"><b>GitOps(ArgoCD)</b> · CI 가 이미지 빌드→ECR→태그 bump</span></div>
+        <div class="layer"><span class="tag">접근</span><span class="d">상황판은 <b>GitHub SSO</b> 뒤 · webhook·헬스체크는 예외</span></div>
+      </div>
+    </div>
+    <div class="page-no">09 — 배포</div>
+  </section>
+
+  <section class="slide">
+    <div class="wrap">
+      <div class="eyebrow">요약</div>
+      <h2>지금, 실제로 돌아간다</h2>
+      <p class="lead">알림 → 게이트 → 수집 → Bedrock → Slack·상황판까지 전 체인이 클러스터에서 가동 중.
+        실제 RDS 장애를 로그에서 읽어 <span class="hl-g">high confidence</span>로 원인을 짚었다.</p>
+      <div class="kpis">
+        <div class="kpi"><div class="n hl">5</div><div class="l">알림→리포트 단계</div></div>
+        <div class="kpi"><div class="n hl-g">2</div><div class="l">클러스터 통합 관측</div></div>
+        <div class="kpi"><div class="n">0</div><div class="l">LLM 의 쓰기 권한</div></div>
+        <div class="kpi"><div class="n hl-a">read-only</div><div class="l">조사자 역할 고정</div></div>
+      </div>
+      <div class="chips" style="margin-top:38px">
+        <span class="chip">다음 → 로그/메트릭 심층 수집 보강</span>
+        <span class="chip">과거 인시던트 유사도 캐시</span>
+        <span class="chip">심층 조사 에이전트 루프</span>
+      </div>
+    </div>
+    <div class="page-no">10 — 요약</div>
+  </section>
+
+</div>
+
+<div class="dots" id="dots"></div>
+<div class="hint">← → 또는 스크롤</div>
+
+<script>
+  const deck=document.getElementById("deck");
+  const slides=[...deck.querySelectorAll(".slide")];
+  const dots=document.getElementById("dots");
+  document.getElementById("tot").textContent=String(slides.length).padStart(2,"0");
+  slides.forEach((s,i)=>{const b=document.createElement("button");b.setAttribute("aria-label",`슬라이드 ${i+1}`);
+    b.onclick=()=>slides[i].scrollIntoView({behavior:"smooth",inline:"center"});dots.appendChild(b);});
+  const dotEls=[...dots.children];
+
+  const io=new IntersectionObserver((es)=>{es.forEach(e=>{
+    if(e.isIntersecting){e.target.classList.add("vis");
+      const i=slides.indexOf(e.target);
+      dotEls.forEach((d,j)=>d.classList.toggle("on",j===i));
+      document.getElementById("cur").textContent=String(i+1).padStart(2,"0");
+      document.getElementById("fill").style.width=((i+1)/slides.length*100)+"%";
+    }});},{root:deck,threshold:.55});
+  slides.forEach(s=>io.observe(s));
+
+  function cur(){return Math.round(deck.scrollLeft/innerWidth);}
+  addEventListener("keydown",(e)=>{
+    if(e.key==="ArrowRight"||e.key==="PageDown"){e.preventDefault();slides[Math.min(slides.length-1,cur()+1)].scrollIntoView({behavior:"smooth",inline:"center"});}
+    if(e.key==="ArrowLeft"||e.key==="PageUp"){e.preventDefault();slides[Math.max(0,cur()-1)].scrollIntoView({behavior:"smooth",inline:"center"});}
+    if(e.key==="Home"){slides[0].scrollIntoView({behavior:"smooth",inline:"center"});}
+    if(e.key==="End"){slides[slides.length-1].scrollIntoView({behavior:"smooth",inline:"center"});}
+  });
+  deck.addEventListener("wheel",(e)=>{if(Math.abs(e.deltaY)>Math.abs(e.deltaX)){e.preventDefault();deck.scrollLeft+=e.deltaY;}},{passive:false});
+</script>

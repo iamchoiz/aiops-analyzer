@@ -38,7 +38,7 @@
   .ms{position:relative;}
   .ms>button{background:#0e131a;color:var(--text);border:1px solid var(--border);border-radius:7px;padding:5px 10px;font:inherit;font-size:11px;cursor:pointer;white-space:nowrap;}
   .ms>button:hover{background:#1a212b;}
-  .ms-menu{position:absolute;top:110%;left:0;z-index:60;min-width:200px;max-height:340px;overflow:auto;
+  .ms-menu{position:fixed;z-index:200;min-width:210px;max-height:60vh;overflow:auto;
     background:#11161d;border:1px solid var(--border);border-radius:9px;padding:6px;display:none;box-shadow:0 10px 34px rgba(0,0,0,.5);}
   .ms-menu.open{display:block;}
   .ms-menu label{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;font-size:12px;cursor:pointer;white-space:nowrap;}
@@ -183,7 +183,10 @@ function buildFilters(data){
     (svc.length?`<div class="grp">서비스</div>`+svc.map(box).join(""):"")+
     (addon.length?`<div class="grp">애드온/플랫폼</div>`+addon.map(box).join(""):"");
   btn.textContent=(NS_FILTER==="*"?"전체 네임스페이스":`${NS_FILTER.length}개 선택`)+" ▾";
-  btn.onclick=(e)=>{e.stopPropagation();menu.classList.toggle("open");};
+  btn.onclick=(e)=>{e.stopPropagation();
+    const r=btn.getBoundingClientRect();
+    menu.style.left=Math.min(r.left,innerWidth-230)+"px";menu.style.top=(r.bottom+6)+"px";
+    menu.classList.toggle("open");};
   menu.onclick=(e)=>e.stopPropagation();
   menu.querySelectorAll("input").forEach(cb=>cb.onchange=()=>{
     const allCb=menu.querySelector('input[value="*"]');
