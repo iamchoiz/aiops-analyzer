@@ -6,28 +6,65 @@
 <title>AIOps 현황 상황판</title>
 <style>
   :root{
-    --bg:#0b0e13; --border:#2b313b; --text:#e6edf3; --muted:#8b949e;
-    --green:#2f9e44; --amber:#e0a93b; --orange:#e8590c; --red:#c92a2a; --gray:#3a4049;
+    --bg:#0a0d12; --bar:#11151c; --bar2:#161b23; --border:#242b35; --text:#e8edf4; --muted:#8a94a3;
+    --green:#2f9e44; --green2:#1f7a33; --amber:#d9a441; --red:#d6453d; --gray:#39404a; --accent:#4c8dff;
   }
   *{box-sizing:border-box;}
-  body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,"Segoe UI",system-ui,sans-serif;}
-  header{display:flex;align-items:center;gap:14px;padding:10px 18px;border-bottom:1px solid var(--border);}
-  header h1{font-size:15px;margin:0;font-weight:600;}
-  nav a{color:var(--muted);text-decoration:none;font-size:13px;margin-right:12px;padding:3px 8px;border-radius:5px;}
-  nav a.active,nav a:hover{color:#fff;background:#1b2027;}
-  .legend{display:flex;gap:12px;font-size:12px;color:var(--muted);margin-left:auto;align-items:center;}
-  .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:middle;}
-  #map{position:relative;width:100%;height:calc(100vh - 50px);}
+  html,body{margin:0;height:100%;}
+  body{background:var(--bg);color:var(--text);font:13px/1.5 -apple-system,"Segoe UI",system-ui,sans-serif;overflow:hidden;}
+  header{display:flex;align-items:center;gap:16px;height:46px;padding:0 18px;background:linear-gradient(180deg,#141a22,#0d1118);border-bottom:1px solid var(--border);}
+  header h1{font-size:14px;margin:0;font-weight:700;letter-spacing:.2px;}
+  nav a{color:var(--muted);text-decoration:none;font-size:12px;margin-right:6px;padding:4px 10px;border-radius:6px;transition:.15s;}
+  nav a.active{color:#fff;background:#222b38;}
+  nav a:hover{color:#fff;background:#1a212b;}
+  .legend{display:flex;gap:14px;font-size:11px;color:var(--muted);margin-left:auto;align-items:center;}
+  .legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:middle;}
+  #meta{color:var(--muted);font-size:11px;min-width:150px;text-align:right;}
+  #map{position:relative;width:100%;height:calc(100% - 46px);}
   svg{width:100%;height:100%;display:block;}
-  .ns{cursor:default;transition:fill .5s ease,opacity .2s ease;}
-  .ns:hover{opacity:.8;stroke:#fff;stroke-width:1.5;}
-  .ns-label{pointer-events:none;fill:#fff;font-weight:600;}
-  .ns-sub{pointer-events:none;fill:rgba(255,255,255,.8);font-size:10px;}
-  .cl-label{pointer-events:none;fill:var(--muted);font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.03em;}
-  .cl-box{fill:none;stroke:var(--border);stroke-width:1;}
-  #tooltip{position:fixed;pointer-events:none;background:#000e;border:1px solid var(--border);padding:8px 11px;border-radius:7px;font-size:12px;display:none;max-width:280px;z-index:20;line-height:1.6;}
-  #tooltip b{font-size:13px;}
-  #err{position:absolute;inset:0;display:none;align-items:center;justify-content:center;color:var(--muted);text-align:center;}
+  .wl{cursor:pointer;transition:opacity .15s;}
+  .wl:hover{opacity:.82;stroke:#fff !important;stroke-width:1.4 !important;}
+  .wl-label,.wl-sub{pointer-events:none;}
+  .wl-label{fill:#fff;font-weight:600;}
+  .wl-sub{fill:rgba(255,255,255,.82);}
+  .cl-box{fill:rgba(255,255,255,.015);stroke:var(--border);stroke-width:1.2;}
+  .cl-label{pointer-events:none;fill:#cdd6e2;font-weight:800;font-size:12px;letter-spacing:.5px;}
+  .cl-stat{pointer-events:none;fill:var(--muted);font-size:11px;}
+  .ns-box{fill:none;stroke:rgba(255,255,255,.07);stroke-width:1;}
+  .ns-label{pointer-events:none;fill:var(--muted);font-weight:700;font-size:10.5px;}
+  .ns-alert{pointer-events:none;fill:var(--red);font-weight:700;font-size:10px;}
+  #tip{position:fixed;pointer-events:none;background:rgba(8,11,16,.96);border:1px solid var(--border);padding:9px 12px;border-radius:9px;font-size:12px;display:none;max-width:300px;z-index:40;box-shadow:0 8px 28px rgba(0,0,0,.5);}
+  #tip b{font-size:13px;} #tip .k{color:var(--muted);}
+  #err{position:absolute;inset:0;display:none;align-items:center;justify-content:center;color:var(--muted);}
+
+  /* 드릴 패널 */
+  #panel{position:fixed;top:0;right:0;width:min(560px,94vw);height:100%;background:var(--bar);border-left:1px solid var(--border);
+    transform:translateX(102%);transition:transform .28s cubic-bezier(.4,0,.2,1);overflow-y:auto;z-index:50;box-shadow:-18px 0 50px rgba(0,0,0,.45);}
+  #panel.open{transform:translateX(0);}
+  .p-head{position:sticky;top:0;background:linear-gradient(180deg,#171d26,#141a22);padding:16px 20px;border-bottom:1px solid var(--border);z-index:1;}
+  .p-head h2{margin:0;font-size:16px;font-weight:700;}
+  .p-head .sub{color:var(--muted);font-size:12px;margin-top:3px;}
+  .p-close{position:absolute;top:14px;right:16px;cursor:pointer;color:var(--muted);font-size:22px;line-height:1;}
+  .p-close:hover{color:#fff;}
+  .p-body{padding:4px 20px 28px;}
+  .sec{margin-top:20px;}
+  .sec h3{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 9px;display:flex;align-items:center;gap:8px;}
+  .sec h3 .cnt{background:#222b38;color:#cdd6e2;border-radius:10px;padding:0 7px;font-size:10px;font-weight:700;}
+  .row{display:flex;align-items:center;gap:9px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;background:var(--bar2);}
+  .row .dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto;}
+  .row .nm{font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .row .kind{color:var(--muted);font-size:11px;}
+  .row .val{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums;}
+  .pill{font-size:10px;font-weight:700;padding:1px 7px;border-radius:9px;}
+  .pill.red{background:rgba(214,69,61,.18);color:#ff8781;} .pill.amber{background:rgba(217,169,65,.18);color:#f2c34f;}
+  .pill.green{background:rgba(47,158,68,.16);color:#5fd27f;} .pill.gray{background:#222b38;color:#9aa5b4;}
+  .ok{color:var(--muted);font-size:12px;padding:6px 2px;}
+  .incident{cursor:pointer;} .incident:hover{border-color:var(--accent);}
+  .logs{background:#0a0d12;border:1px solid var(--border);border-radius:8px;padding:10px;max-height:300px;overflow:auto;
+    font:11px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;word-break:break-all;}
+  .logs .ln{color:#b8c2d0;padding:1px 0;border-bottom:1px solid rgba(255,255,255,.03);}
+  .logs .ln .app{color:var(--accent);} .logs .ln.err{color:#ff9d96;}
+  .muted{color:var(--muted);}
 </style>
 </head>
 <body>
@@ -36,117 +73,187 @@
   <nav><a href="/ui/fleet.html" class="active">현황</a><a href="/ui/">인시던트</a></nav>
   <div class="legend">
     <span><i style="background:var(--green)"></i>정상</span>
-    <span><i style="background:var(--amber)"></i>재시작</span>
-    <span><i style="background:var(--orange)"></i>알림</span>
-    <span><i style="background:var(--red)"></i>not-ready</span>
-    <span>크기=파드수</span>
-    <span id="meta">—</span>
+    <span><i style="background:var(--amber)"></i>degraded</span>
+    <span><i style="background:var(--red)"></i>down</span>
+    <span><i style="background:var(--gray)"></i>scaled 0</span>
+    <span class="muted">크기=replica · 타일=워크로드</span>
   </div>
+  <div id="meta">—</div>
 </header>
 <div id="map"><svg id="svg" preserveAspectRatio="none"></svg><div id="err"></div></div>
-<div id="tooltip"></div>
+<div id="tip"></div>
+
+<div id="panel">
+  <div class="p-head"><span class="p-close" onclick="closePanel()">×</span>
+    <h2 id="p-title">—</h2><div class="sub" id="p-sub"></div></div>
+  <div class="p-body" id="p-body"></div>
+</div>
 
 <script>
-// finviz.com/map 스타일 그룹 treemap: 클러스터(sector) → 네임스페이스(stock).
-// 크기=파드수, 색=헬스. CDN 의존 없는 self-contained squarified treemap.
-const SVG_NS="http://www.w3.org/2000/svg";
-const CL_HEAD=20; // 클러스터 라벨 바 높이
+const NS="http://www.w3.org/2000/svg";
+const CL_HEAD=24, NS_HEAD=15, GAP=3;
+const C_GREEN="#2f9e44",C_AMBER="#d9a441",C_RED="#d6453d",C_GRAY="#39404a";
 
-function color(t){
-  if(!t.pods) return "var(--gray)";
-  if(t.not_ready>0){ const f=Math.min(1,t.not_ready/t.pods);
-    const r=Math.round(150+100*f), g=Math.round(55-35*f); return `rgb(${r},${g},${g+6})`; }
-  if(t.alerts>0) return "var(--orange)";
-  if(t.restarts>=1) return "var(--amber)";
-  return "var(--green)";
+function wlColor(t){
+  if(!t.desired) return C_GRAY;
+  if(t.ready===0) return C_RED;
+  if(t.ready<t.desired) return C_AMBER;
+  return C_GREEN;
 }
+function wlStatus(t){
+  if(!t.desired) return ["scaled 0","gray"];
+  if(t.ready===0) return ["down","red"];
+  if(t.ready<t.desired) return ["degraded","amber"];
+  return ["healthy","green"];
+}
+function esc(s){return (s??"").toString().replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
 
+// squarified treemap
 function squarify(items,x,y,w,h){
-  const out=[]; const total=items.reduce((s,it)=>s+it.value,0)||1;
-  let area={x,y,w,h};
-  let rem=items.map(it=>({...it,area:it.value/total*(w*h)}));
-  const worst=(row,len)=>{const s=row.reduce((a,b)=>a+b.area,0),mx=Math.max(...row.map(b=>b.area)),mn=Math.min(...row.map(b=>b.area));return Math.max(len*len*mx/(s*s),s*s/(len*len*mn));};
-  function lay(row,hor){const s=row.reduce((a,b)=>a+b.area,0);
-    if(hor){const rh=s/area.w;let cx=area.x;for(const b of row){const bw=b.area/rh;out.push({x:cx,y:area.y,w:bw,h:rh,data:b.data});cx+=bw;}area={x:area.x,y:area.y+rh,w:area.w,h:area.h-rh};}
-    else{const rw=s/area.h;let cy=area.y;for(const b of row){const bh=b.area/rw;out.push({x:area.x,y:cy,w:rw,h:bh,data:b.data});cy+=bh;}area={x:area.x+rw,y:area.y,w:area.w-rw,h:area.h};}}
+  const out=[];const total=items.reduce((s,i)=>s+i.value,0)||1;let a={x,y,w,h};
+  let rem=items.map(i=>({...i,area:i.value/total*(w*h)}));
+  const worst=(r,l)=>{const s=r.reduce((p,b)=>p+b.area,0),mx=Math.max(...r.map(b=>b.area)),mn=Math.min(...r.map(b=>b.area));return Math.max(l*l*mx/(s*s),s*s/(l*l*mn));};
+  function lay(r,hor){const s=r.reduce((p,b)=>p+b.area,0);
+    if(hor){const rh=s/a.w;let cx=a.x;for(const b of r){const bw=b.area/rh;out.push({x:cx,y:a.y,w:bw,h:rh,data:b.data});cx+=bw;}a={x:a.x,y:a.y+rh,w:a.w,h:a.h-rh};}
+    else{const rw=s/a.h;let cy=a.y;for(const b of r){const bh=b.area/rw;out.push({x:a.x,y:cy,w:rw,h:bh,data:b.data});cy+=bh;}a={x:a.x+rw,y:a.y,w:a.w,h:a.h};}}
   let row=[];
-  while(rem.length){const hor=area.w>=area.h,len=hor?area.w:area.h,next=rem[0];
-    if(row.length===0||worst(row,len)>=worst([...row,next],len)){row.push(next);rem.shift();}
-    else{lay(row,hor);row=[];}}
-  if(row.length)lay(row,area.w>=area.h);
+  while(rem.length){const hor=a.w>=a.h,l=hor?a.w:a.h,nx=rem[0];
+    if(!row.length||worst(row,l)>=worst([...row,nx],l)){row.push(nx);rem.shift();}else{lay(row,hor);row=[];}}
+  if(row.length)lay(row,a.w>=a.h);
   return out;
 }
 
-const tooltip=document.getElementById("tooltip");
-function tip(e,t){
-  tooltip.style.display="block";
-  tooltip.style.left=(e.clientX+12)+"px"; tooltip.style.top=(e.clientY+12)+"px";
-  const health=t.not_ready>0?`🔴 not-ready ${t.not_ready}`:t.alerts>0?`🟠 알림 ${t.alerts}`:t.restarts>=1?`🟡 재시작 ${t.restarts}`:"🟢 정상";
-  tooltip.innerHTML=`<b>${t.cluster} / ${t.namespace}</b><br>${health}<br>`+
-    `파드 ${t.ready}/${t.pods} ready<br>재시작(15m) ${t.restarts} · firing 알림 ${t.alerts}`;
-}
+function rect(cls,x,y,w,h,fill,rx){const r=document.createElementNS(NS,"rect");r.setAttribute("class",cls);
+  r.setAttribute("x",x);r.setAttribute("y",y);r.setAttribute("width",Math.max(0,w));r.setAttribute("height",Math.max(0,h));
+  if(fill)r.setAttribute("fill",fill);if(rx)r.setAttribute("rx",rx);return r;}
+function text(cls,x,y,s,size){const t=document.createElementNS(NS,"text");t.setAttribute("class",cls);
+  t.setAttribute("x",x);t.setAttribute("y",y);if(size)t.setAttribute("font-size",size);t.textContent=s;return t;}
 
+const tip=document.getElementById("tip");
+function showTip(e,t){const[st,cc]=wlStatus(t);
+  tip.style.display="block";tip.style.left=Math.min(e.clientX+14,innerWidth-310)+"px";tip.style.top=(e.clientY+14)+"px";
+  tip.innerHTML=`<b>${esc(t.name)}</b> <span class="k">${t.kind}</span><br>`+
+    `<span class="k">${esc(t.cluster)} / ${esc(t.namespace)}</span><br>`+
+    `replica <b>${t.ready}/${t.desired}</b> · <span style="color:${wlColor(t)}">${st}</span><br>`+
+    `<span class="k">클릭 → 네임스페이스 상세·로그</span>`;}
+
+let SVG,W,H;
 function render(data){
-  const svg=document.getElementById("svg"), err=document.getElementById("err");
-  svg.innerHTML="";
+  SVG=document.getElementById("svg");const err=document.getElementById("err");SVG.innerHTML="";
   if(data.error){err.style.display="flex";err.textContent="데이터 소스 오류: "+data.error;return;}
   err.style.display="none";
-  const rect=svg.getBoundingClientRect(), W=rect.width, H=rect.height;
-  svg.setAttribute("viewBox",`0 0 ${W} ${H}`);
-  const tiles=data.namespaces||[];
-  document.getElementById("meta").textContent=`클러스터 ${(data.clusters||[]).length} · ns ${tiles.length} · ${new Date().toLocaleTimeString()}`;
-  if(!tiles.length){err.style.display="flex";err.textContent="표시할 네임스페이스 없음";return;}
+  const tiles=data.tiles||[];const alerts=data.ns_alerts||{};
+  const r=SVG.getBoundingClientRect();W=r.width;H=r.height;SVG.setAttribute("viewBox",`0 0 ${W} ${H}`);
+  document.getElementById("meta").textContent=`클러스터 ${(data.clusters||[]).length} · 워크로드 ${tiles.length} · ${new Date().toLocaleTimeString()}`;
+  if(!tiles.length){err.style.display="flex";err.textContent="표시할 워크로드 없음";return;}
 
-  // 1) 클러스터를 total 파드수로 캔버스에 배치
-  const byCl={}; for(const t of tiles){(byCl[t.cluster]=byCl[t.cluster]||[]).push(t);}
-  const clItems=Object.entries(byCl).map(([c,ns])=>({value:ns.reduce((s,t)=>s+Math.max(1,t.pods),0),data:{cluster:c,ns}}))
+  // group: cluster -> namespace -> [workloads]
+  const byCl={};
+  for(const t of tiles){(byCl[t.cluster]=byCl[t.cluster]||{});(byCl[t.cluster][t.namespace]=byCl[t.cluster][t.namespace]||[]).push(t);}
+  const sz=t=>Math.max(1,t.desired);
+  const clItems=Object.entries(byCl).map(([c,nss])=>({value:Object.values(nss).flat().reduce((s,t)=>s+sz(t),0),data:{c,nss}}))
     .sort((a,b)=>b.value-a.value);
-  const clRects=squarify(clItems,0,0,W,H);
 
-  for(const cr of clRects){
-    // 클러스터 외곽 + 라벨 바
-    const box=document.createElementNS(SVG_NS,"rect");
-    box.setAttribute("class","cl-box");
-    box.setAttribute("x",cr.x+1);box.setAttribute("y",cr.y+1);
-    box.setAttribute("width",Math.max(0,cr.w-2));box.setAttribute("height",Math.max(0,cr.h-2));
-    svg.appendChild(box);
-    const lbl=document.createElementNS(SVG_NS,"text");
-    lbl.setAttribute("class","cl-label");
-    lbl.setAttribute("x",cr.x+6);lbl.setAttribute("y",cr.y+14);
-    lbl.textContent=`${cr.data.cluster} · ${cr.data.ns.reduce((s,t)=>s+t.pods,0)} pods`;
-    svg.appendChild(lbl);
-
-    // 2) 클러스터 내부(라벨 바 아래)에 네임스페이스 타일
-    const inX=cr.x+2, inY=cr.y+CL_HEAD, inW=cr.w-4, inH=cr.h-CL_HEAD-2;
-    if(inW<=0||inH<=0) continue;
-    const nsItems=cr.data.ns.map(t=>({value:Math.max(1,t.pods),data:t})).sort((a,b)=>b.value-a.value);
-    for(const nt of squarify(nsItems,inX,inY,inW,inH)){
-      const t=nt.data;
-      const g=document.createElementNS(SVG_NS,"g");
-      const r=document.createElementNS(SVG_NS,"rect");
-      r.setAttribute("class","ns");
-      r.setAttribute("x",nt.x+1);r.setAttribute("y",nt.y+1);
-      r.setAttribute("width",Math.max(0,nt.w-2));r.setAttribute("height",Math.max(0,nt.h-2));
-      r.setAttribute("rx",2);r.setAttribute("fill",color(t));r.setAttribute("stroke","rgba(0,0,0,.4)");
-      g.appendChild(r);
-      if(nt.w>44&&nt.h>24){
-        const tx=document.createElementNS(SVG_NS,"text");
-        tx.setAttribute("class","ns-label");tx.setAttribute("x",nt.x+5);tx.setAttribute("y",nt.y+15);
-        tx.setAttribute("font-size",Math.min(13,nt.w/7));tx.textContent=t.namespace;
-        g.appendChild(tx);
-        if(nt.h>38){const sub=document.createElementNS(SVG_NS,"text");
-          sub.setAttribute("class","ns-sub");sub.setAttribute("x",nt.x+5);sub.setAttribute("y",nt.y+29);
-          sub.textContent=`${t.ready}/${t.pods}${t.not_ready?" ⚠":""}`;g.appendChild(sub);}
+  for(const cr of squarify(clItems,GAP,GAP,W-2*GAP,H-2*GAP)){
+    const{c,nss}=cr.data;
+    SVG.appendChild(rect("cl-box",cr.x,cr.y,cr.w,cr.h,null,6));
+    const wls=Object.values(nss).flat();
+    SVG.appendChild(text("cl-label",cr.x+10,cr.y+16,c.toUpperCase()));
+    const stat=`${Object.keys(nss).length} ns · ${wls.length} wl`;
+    SVG.appendChild(text("cl-stat",cr.x+cr.w-10,cr.y+16,stat).also(t=>t.setAttribute("text-anchor","end")));
+    const ix=cr.x+GAP,iy=cr.y+CL_HEAD,iw=cr.w-2*GAP,ih=cr.h-CL_HEAD-GAP;
+    if(iw<=2||ih<=2)continue;
+    const nsItems=Object.entries(nss).map(([n,ws])=>({value:ws.reduce((s,t)=>s+sz(t),0),data:{n,ws}})).sort((a,b)=>b.value-a.value);
+    for(const nr of squarify(nsItems,ix,iy,iw,ih)){
+      const{n,ws}=nr.data;
+      SVG.appendChild(rect("ns-box",nr.x,nr.y,nr.w,nr.h,null,4));
+      const al=alerts[`${c}/${n}`]||0;
+      if(nr.w>50&&nr.h>NS_HEAD+6){
+        SVG.appendChild(text("ns-label",nr.x+6,nr.y+11,n.length*6.2>nr.w-24?n.slice(0,Math.max(3,(nr.w-24)/6.2|0)):n));
+        if(al)SVG.appendChild(text("ns-alert",nr.x+nr.w-6,nr.y+11,"● "+al).also(t=>t.setAttribute("text-anchor","end")));
       }
-      g.addEventListener("mousemove",e=>tip(e,t));
-      g.addEventListener("mouseleave",()=>tooltip.style.display="none");
-      svg.appendChild(g);
+      const wx=nr.x+1,wy=nr.y+(nr.w>50&&nr.h>NS_HEAD+6?NS_HEAD:1),ww=nr.w-2,wh=nr.h-(nr.w>50&&nr.h>NS_HEAD+6?NS_HEAD+1:2);
+      if(ww<=1||wh<=1)continue;
+      const wlItems=ws.map(t=>({value:sz(t),data:t})).sort((a,b)=>b.value-a.value);
+      for(const w of squarify(wlItems,wx,wy,ww,wh)){
+        const t=w.data;const g=document.createElementNS(NS,"g");
+        g.appendChild(rect("wl",w.x+.6,w.y+.6,w.w-1.2,w.h-1.2,wlColor(t),2.5).also(r=>r.setAttribute("stroke","rgba(0,0,0,.35)")));
+        if(w.w>42&&w.h>22){
+          const nm=t.name.length*6>w.w-8?t.name.slice(0,Math.max(3,(w.w-8)/6|0))+"…":t.name;
+          g.appendChild(text("wl-label",w.x+5,w.y+14,nm,Math.min(12,w.w/7)));
+          if(w.h>34)g.appendChild(text("wl-sub",w.x+5,w.y+26,`${t.ready}/${t.desired}`,10));
+        }
+        g.addEventListener("mousemove",e=>showTip(e,t));
+        g.addEventListener("mouseleave",()=>tip.style.display="none");
+        g.addEventListener("click",()=>openPanel(t.cluster,t.namespace,t.name));
+        SVG.appendChild(g);
+      }
     }
   }
 }
+// tiny helper: chainable attr set
+Element.prototype.also=function(fn){fn(this);return this;};
 
-async function tick(){try{const r=await fetch("/api/fleet");render(await r.json());}catch(e){}}
-tick(); setInterval(tick,5000); window.addEventListener("resize",tick);
+// ───────── 드릴 패널 ─────────
+async function openPanel(cluster,ns,focus){
+  const P=document.getElementById("panel");P.classList.add("open");
+  document.getElementById("p-title").textContent=`${cluster} / ${ns}`;
+  document.getElementById("p-sub").textContent="불러오는 중…";
+  location.hash=`ns=${cluster}/${ns}`;
+  const body=document.getElementById("p-body");body.innerHTML="";
+  let d;try{d=await(await fetch(`/api/fleet/${encodeURIComponent(cluster)}/${encodeURIComponent(ns)}`)).json();}
+  catch(e){body.innerHTML='<div class="ok">불러오기 실패</div>';return;}
+  const wl=d.workloads||[],pp=d.problem_pods||[],fa=d.firing_alerts||[],inc=d.incidents||[],lg=(d.logs&&d.logs.lines)||[];
+  const bad=wl.filter(w=>!w.healthy).length;
+  document.getElementById("p-sub").innerHTML=`워크로드 ${wl.length} · 문제 ${bad} · 알림 ${fa.length} · 인시던트 ${inc.length}`;
+
+  let h="";
+  // 워크로드
+  h+=sec("워크로드",wl.length,wl.map(w=>{
+    const[st,cc]=wlStatus(w);
+    return `<div class="row"><span class="dot" style="background:${colorOf(cc)}"></span>
+      <span class="nm">${esc(w.name)}</span><span class="kind">${w.kind}</span>
+      <span class="val">${w.ready}/${w.desired}</span><span class="pill ${cc}">${st}</span></div>`;}).join("")||okmsg("모든 워크로드 정상"));
+  // 문제 파드
+  if(pp.length)h+=sec("문제 파드",pp.length,pp.map(p=>
+    `<div class="row"><span class="dot" style="background:${p.ready?colorOf('amber'):colorOf('red')}"></span>
+     <span class="nm">${esc(p.pod)}</span>
+     ${p.last_reason?`<span class="pill red">${esc(p.last_reason)}</span>`:""}
+     ${p.restarts?`<span class="val">↻ ${p.restarts}</span>`:""}
+     <span class="pill ${p.ready?'amber':'red'}">${p.ready?'not-ready*':'not-ready'}</span></div>`).join(""));
+  // 발화 알림
+  if(fa.length)h+=sec("발화 알림",fa.length,fa.map(a=>
+    `<div class="row"><span class="dot" style="background:${a.severity==='critical'?colorOf('red'):colorOf('amber')}"></span>
+     <span class="nm">${esc(a.alertname)}</span><span class="pill ${a.severity==='critical'?'red':'amber'}">${a.severity}</span></div>`).join(""));
+  // AIOps 인시던트
+  if(inc.length)h+=sec("AIOps 인시던트",inc.length,inc.map(i=>
+    `<div class="row incident" onclick="location.href='/ui/#inc=${encodeURIComponent(i.id)}'">
+     <span class="dot" style="background:${i.severity==='critical'?colorOf('red'):colorOf('amber')}"></span>
+     <span class="nm">${esc(i.id)}</span>
+     ${i.confidence?`<span class="pill gray">conf ${i.confidence}</span>`:""}
+     <span class="pill ${i.severity==='critical'?'red':'amber'}">${i.severity}</span>
+     <span class="val">RCA →</span></div>`).join(""));
+  // 로그
+  const logErr=d.logs&&d.logs._unavailable;
+  h+=`<div class="sec"><h3>최근 로그 <span class="cnt">${lg.length}</span></h3>`;
+  if(logErr)h+=`<div class="ok">로그 소스 불가: ${esc(logErr)}</div>`;
+  else if(!lg.length)h+=okmsg("최근 로그 없음");
+  else h+=`<div class="logs">`+lg.map(l=>{
+    const isErr=/(?:err|error|exception|fatal|panic|fail)/i.test(l.line);
+    return `<div class="ln${isErr?' err':''}"><span class="app">${esc(l.app)}</span> ${esc(l.line)}</div>`;}).join("")+`</div>`;
+  h+=`</div>`;
+  body.innerHTML=h;
+}
+function sec(title,cnt,inner){return `<div class="sec"><h3>${title} <span class="cnt">${cnt}</span></h3>${inner}</div>`;}
+function okmsg(m){return `<div class="ok">✓ ${m}</div>`;}
+function colorOf(c){return {red:C_RED,amber:C_AMBER,green:C_GREEN,gray:C_GRAY}[c]||C_GRAY;}
+function closePanel(){document.getElementById("panel").classList.remove("open");history.replaceState(null,"",location.pathname);}
+function fromHash(){const m=location.hash.match(/ns=([^/]+)\/(.+)/);if(m)openPanel(decodeURIComponent(m[1]),decodeURIComponent(m[2]));}
+
+async function tick(){try{render(await(await fetch("/api/fleet")).json());}catch(e){}}
+tick().then(fromHash);
+setInterval(tick,8000);
+addEventListener("resize",tick);
 </script>
 </body>
 </html>

@@ -115,9 +115,24 @@ async def api_incident_detail(incident_id: str):
 
 @app.get("/api/fleet")
 async def api_fleet():
-    """전체 현황 상황판(finviz 스타일) 데이터 — 전 클러스터 cluster/namespace 헬스(Thanos)."""
+    """전체 현황 상황판(finviz) — 클러스터→ns→워크로드 타일(Thanos)."""
     from . import fleet
     return fleet.fleet_snapshot()
+
+
+@app.get("/api/fleet/{cluster}/{namespace}")
+async def api_fleet_detail(cluster: str, namespace: str):
+    """ns drill-down — 워크로드·문제파드·발화알림·최근로그 + 관련 AIOps 인시던트."""
+    from . import fleet
+    detail = fleet.namespace_detail(cluster, namespace)
+    detail["incidents"] = [
+        {"id": inc.id, "severity": inc.severity.value, "status": inc.status,
+         "confidence": (gates.reports.get(inc.id) or {}).get("overall_confidence"),
+         "has_report": gates.reports.get(inc.id) is not None}
+        for inc in gates.incidents.all()
+        if inc.cluster == cluster and inc.namespace == namespace
+    ]
+    return detail
 
 
 @app.get("/metrics", response_class=PlainTextResponse)
