@@ -12,10 +12,18 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 import urllib.parse
 import urllib.request
 from typing import Any
+
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")           # 터미널 색코드 제거
+# DB/연결 장애는 err/fail 단어가 없는 경우 多 → 패턴 대폭 확대
+_ERR_PAT = (r"(?i)(err|error|exception|fatal|panic|fail|warn|refused|timeout|timed out|"
+            r"unable|cannot|could not|econnrefused|enotfound|unavailable|denied|"
+            r"connection|connect|dial|rds|postgres|mysql|sql|database|reset|crash|"
+            r"exit|terminat|killed|oom|unhealthy|probe|retry|retrying)")
 
 THANOS_API = os.environ.get("THANOS_API", "http://thanos-query-frontend.monitoring.svc:10902")
 LOKI_API = os.environ.get("LOKI_API", "http://loki-gateway.monitoring.svc")
@@ -193,15 +201,15 @@ def _safe_logs(cluster: str, namespace: str) -> dict[str, Any]:
         return {"_unavailable": f"{type(e).__name__}: {e}", "lines": []}
 
 
-def loki_recent_logs(cluster: str, namespace: str, limit: int = 30) -> list[dict]:
-    """최근 에러성 로그 — 없으면 전체 최근 로그로 폴백(빈 패널 방지)."""
+def loki_recent_logs(cluster: str, namespace: str, limit: int = 30, hours: float = 6) -> list[dict]:
+    """에러성 로그 — 넓은 패턴. 없으면 일반 최근 로그 폴백(빈 패널 방지). ANSI 제거."""
     now = time.time()
-    start = int((now - 3600) * 1e9)      # 1h 전 (ns)
+    start = int((now - hours * 3600) * 1e9)
     end = int(now * 1e9)
-    err = r'{cluster="%s",namespace="%s"} |~ `(?i)(err|error|exception|fatal|panic|fail|warn)`' % (cluster, namespace)
-    lines = _loki_query(err, start, end, limit)
-    if not lines:                         # 에러 없으면 일반 최근 로그
-        lines = _loki_query('{cluster="%s",namespace="%s"}' % (cluster, namespace), start, end, limit)
+    sel = '{cluster="%s",namespace="%s"}' % (cluster, namespace)
+    lines = _loki_query(f"{sel} |~ `{_ERR_PAT}`", start, end, limit)
+    if not lines:
+        lines = _loki_query(sel, start, end, limit)
     return lines
 
 
@@ -216,6 +224,8 @@ def _loki_query(expr: str, start: int, end: int, limit: int) -> list[dict]:
         lbl = s["stream"]
         app = lbl.get("app") or lbl.get("pod") or lbl.get("container", "")
         for ts, line in s["values"]:
-            rows.append({"ts": int(ts), "app": app, "line": line[:400]})
+            clean = _ANSI.sub("", line).strip()
+            if clean:
+                rows.append({"ts": int(ts), "app": app, "line": clean[:500]})
     rows.sort(key=lambda r: r["ts"], reverse=True)
     return rows[:limit]

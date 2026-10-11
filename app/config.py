@@ -32,6 +32,7 @@ class Config:
     # G2 incident 조립
     correlation_window_seconds: int = _int("G2_WINDOW_SECONDS", 300)
     storm_threshold: int = _int("G2_STORM_THRESHOLD", 15)         # 창에 N개↑ = 대규모 장애 모드
+    incident_stale_ttl: int = _int("INCIDENT_STALE_TTL", 10800)   # firing 자동해소 안전망(3h)
 
     # G4 예산 서킷브레이커 (앱 내부 1차 — 계정 AWS Budgets 가 2차)
     daily_analysis_cap: int = _int("G4_DAILY_CAP", 200)

@@ -108,8 +108,11 @@ async def webhook(payload: AlertmanagerWebhook, bg: BackgroundTasks):
     now = _now()
     fresh = gates.g1_filter(payload.alerts, now)             # G1: 중복억제
     firing = [a for a in fresh if a.status == "firing"]
+    resolved = [a for a in fresh if a.status == "resolved"]
+    if resolved:                                            # AM resolved → 인시던트 해소
+        gates.incidents.apply_resolved(resolved, now)
     if not firing:
-        return JSONResponse({"status": "accepted", "analyzed": 0,
+        return JSONResponse({"status": "accepted", "analyzed": 0, "resolved": len(resolved),
                              "note": "쿨다운/전부 resolved"}, status_code=202)
     assembled = gates.incidents.assemble(firing, now)        # G2: 인시던트 조립
     queued = 0
@@ -206,14 +209,28 @@ def api_analyze(cluster: str, namespace: str):
                    status="firing", created_at=now, updated_at=now, cluster=cluster, namespace=namespace,
                    alerts=alerts, alert_names=sorted({a.name for a in alerts}))
 
-    pack = build_context_pack(inc)
-    pack["namespace_state"] = {k: detail.get(k) for k in ("workloads", "problem_pods", "pods", "firing_alerts", "logs")}
+    # 넓은 시간창(6h) 로그 — 회복 후 깨끗한 최근 로그가 아니라 '문제 발생 당시' 로그를 잡기 위함
+    try:
+        wide_logs = fleet.loki_recent_logs(cluster, namespace, limit=80, hours=12)
+    except Exception:
+        wide_logs = detail.get("logs", {}).get("lines", [])
+
+    # 정합성 있는 팩 — 실제 제공하는 데이터(로그·CPU/Mem·파드)는 gap 으로 표기하지 않는다.
+    pack = {
+        "incident": {"id": inc.id, "severity": sev.value, "cluster": cluster, "namespace": namespace,
+                     "alerts": [{"name": a.name, "severity": a.severity, "reason": a.labels.get("reason", "")}
+                                for a in alerts]},
+        "namespace_state": {k: detail.get(k) for k in ("workloads", "problem_pods", "pods", "firing_alerts")},
+        "logs": wide_logs,                       # ANSI 제거·넓은 패턴·6h — 이 안에서 근본원인 단서를 찾아라
+        "not_yet_collected": ["topology(홉별 판정)", "historical metric baseline(어제/지난주 대비)",
+                              "k8s Events(스포크는 미수집)"],
+        "hint": "logs 배열에 실제 애플리케이션 로그가 있다. CPU/Mem 은 namespace_state.pods 각 항목의 cpu/mem 필드 참조.",
+    }
     try:
         report = analyze(inc, pack)
     except Exception as e:
         report = _degraded_report(inc, e)
-    gates.incidents._incidents[inc.id] = inc        # 저장(히트맵·drill 에 노출)
-    gates.reports.set(inc.id, report.model_dump())
+    # 온디맨드는 일회성 분석 — firing 인시던트로 저장하지 않는다(히트맵/상황판에 안 꺼지는 문제 방지).
     slack.post(inc, report)
     return {"incident_id": inc.id, "report": report.model_dump()}
 

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import threading
+import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 
@@ -145,8 +146,36 @@ class IncidentStore:
                 return inc
         return None
 
+    def apply_resolved(self, resolved: list[Alert], now: float) -> int:
+        """AM resolved 알림 → 해당 fingerprint 알림을 resolved 로, 전부 resolved 면 인시던트 resolved."""
+        fps = {_fingerprint(a) for a in resolved}
+        n = 0
+        with self._lock:
+            for inc in self._incidents.values():
+                if inc.status != "firing":
+                    continue
+                changed = False
+                for a in inc.alerts:
+                    if a.status == "firing" and _fingerprint(a) in fps:
+                        a.status = "resolved"
+                        changed = True
+                if changed:
+                    inc.status = "resolved" if all(x.status == "resolved" for x in inc.alerts) else "firing"
+                    inc.touch(now)
+                    if inc.status == "resolved":
+                        n += 1
+        return n
+
+    def _sweep_stale(self, now: float) -> None:
+        """안전망 — resolved 웹훅 누락 대비, 오래 안 갱신된 firing 은 자동 해소."""
+        ttl = config.incident_stale_ttl
+        for inc in self._incidents.values():
+            if inc.status == "firing" and (now - inc.updated_at) > ttl:
+                inc.status = "resolved"
+
     def all(self) -> list[Incident]:
         with self._lock:
+            self._sweep_stale(time.time())
             return list(self._incidents.values())
 
     def get(self, incident_id: str) -> Incident | None:

@@ -14,8 +14,10 @@
   *{box-sizing:border-box;}
   html,body{margin:0;height:100%;}
   body{background:var(--bg);color:var(--text);font:13px/1.5 -apple-system,"Segoe UI",system-ui,sans-serif;overflow:hidden;}
-  header{display:flex;align-items:center;gap:16px;height:46px;padding:0 18px;background:linear-gradient(180deg,#141a22,#0d1118);border-bottom:1px solid var(--border);}
-  header h1{font-size:14px;margin:0;font-weight:700;letter-spacing:.2px;}
+  header{display:flex;align-items:center;gap:12px;min-height:46px;padding:6px 16px;background:linear-gradient(180deg,#141a22,#0d1118);border-bottom:1px solid var(--border);flex-wrap:nowrap;overflow-x:auto;}
+  header h1{font-size:14px;margin:0;font-weight:700;letter-spacing:.2px;white-space:nowrap;}
+  header nav,header a[href="/logout"]{white-space:nowrap;}
+  #legend{flex-wrap:nowrap;white-space:nowrap;}
   nav a{color:var(--muted);text-decoration:none;font-size:12px;margin-right:6px;padding:4px 10px;border-radius:6px;transition:.15s;}
   nav a.active{color:#fff;background:#222b38;}
   nav a:hover{color:#fff;background:#1a212b;}
@@ -27,7 +29,9 @@
   .seg button{background:none;border:none;color:var(--muted);font-size:11px;padding:4px 9px;cursor:pointer;transition:.12s;font-family:inherit;}
   .seg button.on{background:var(--accent);color:#fff;}
   .seg button:hover:not(.on){background:#1a212b;color:#fff;}
-  .ctrls{display:flex;gap:10px;align-items:center;}
+  .ctrls{display:flex;gap:8px;align-items:center;flex-wrap:nowrap;}
+  select{background:#0e131a;color:var(--text);border:1px solid var(--border);border-radius:7px;padding:5px 8px;font-family:inherit;font-size:11px;cursor:pointer;}
+  select:focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
   .btn-an{background:linear-gradient(180deg,#3b7bff,#2f6ae0);color:#fff;border:none;border-radius:8px;padding:9px 14px;font-size:13px;font-weight:600;cursor:pointer;width:100%;margin-top:6px;transition:.15s;}
   .btn-an:hover{filter:brightness(1.1);} .btn-an:disabled{opacity:.6;cursor:wait;}
   #map{position:relative;width:100%;height:calc(100% - 46px);}
@@ -80,9 +84,11 @@
 </head>
 <body>
 <header>
-  <h1>🗺️ AIOps 현황 상황판</h1>
+  <h1>🗺️ AIOps</h1>
   <nav><a href="/ui/fleet.html" class="active">현황</a><a href="/ui/">인시던트</a></nav>
   <div class="ctrls">
+    <div class="seg" id="cl-filter"><span class="lab">클러스터</span><button data-cl="*" class="on">전체</button></div>
+    <select id="ns-filter"><option value="*">전체 네임스페이스</option></select>
     <div class="seg"><span class="lab">색</span>
       <button data-color="cpu" class="on">CPU</button><button data-color="mem">메모리</button><button data-color="health">헬스</button></div>
     <div class="seg"><span class="lab">크기</span>
@@ -122,6 +128,25 @@ function esc(s){return (s??"").toString().replace(/[&<>]/g,c=>({"&":"&amp;","<":
 
 // ── 색/크기 모드 (finviz 맵뷰 전환) ──
 let COLOR_MODE="cpu", SIZE_MODE="replicas", LAST=null, _maxCpu=0.001, _maxMem=1;
+let CL_FILTER="*", NS_FILTER="*", _filterSig="";
+// 나스닥 ticker 처럼 짧고 크게 — 클러스터 접미사 제거 + 공통 prefix 축약
+function displayName(t){
+  let n=t.name;
+  n=n.replace(new RegExp("-?"+t.cluster.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"$"),"").replace("-"+t.cluster+"-","-");
+  n=n.replace(/^kube-prometheus-stack-/,"kps-").replace(/^aws-load-balancer-controller/,"aws-lbc");
+  return n||t.name;
+}
+function buildFilters(data){
+  const clBox=document.getElementById("cl-filter");
+  const clusters=(data.clusters||[]).map(c=>c.cluster);
+  clBox.innerHTML='<span class="lab">클러스터</span><button data-cl="*">전체</button>'+clusters.map(c=>`<button data-cl="${c}">${c}</button>`).join("");
+  clBox.querySelectorAll("button").forEach(b=>{b.classList.toggle("on",b.dataset.cl===CL_FILTER);
+    b.onclick=()=>{CL_FILTER=b.dataset.cl;NS_FILTER="*";_filterSig="";if(LAST){buildFilters(LAST);render(LAST);}};});
+  const nsSel=document.getElementById("ns-filter");
+  const nss=[...new Set((data.tiles||[]).filter(t=>CL_FILTER==="*"||t.cluster===CL_FILTER).map(t=>t.namespace))].sort();
+  nsSel.innerHTML='<option value="*">전체 네임스페이스</option>'+nss.map(n=>`<option value="${n}"${n===NS_FILTER?" selected":""}>${n}</option>`).join("");
+  nsSel.onchange=()=>{NS_FILTER=nsSel.value;render(LAST);};
+}
 function lerp(a,b,t){return Math.round(a+(b-a)*t);}
 function heat(v){ // 0..1 → 초록→노랑→주황→빨강 (저사용=cool, 고사용=hot)
   const s=[[31,122,51],[217,196,65],[232,135,44],[214,69,61]];
@@ -190,16 +215,18 @@ function render(data){
   SVG=document.getElementById("svg");const err=document.getElementById("err");SVG.innerHTML="";
   if(data.error){err.style.display="flex";err.textContent="데이터 소스 오류: "+data.error;return;}
   err.style.display="none";
-  const tiles=data.tiles||[];const alerts=data.ns_alerts||{};
+  const alltiles=data.tiles||[];const alerts=data.ns_alerts||{};
   LAST=data;
+  const sig=(data.clusters||[]).map(c=>c.cluster).join(",");
+  if(sig!==_filterSig){_filterSig=sig;buildFilters(data);}
+  const tiles=alltiles.filter(t=>(CL_FILTER==="*"||t.cluster===CL_FILTER)&&(NS_FILTER==="*"||t.namespace===NS_FILTER));
   _maxCpu=Math.max(0.001,...tiles.map(t=>t.cpu||0));
   _maxMem=Math.max(1,...tiles.map(t=>t.mem||0));
   updateLegend();
   const r=SVG.getBoundingClientRect();W=r.width;H=r.height;SVG.setAttribute("viewBox",`0 0 ${W} ${H}`);
-  document.getElementById("meta").textContent=`클러스터 ${(data.clusters||[]).length} · 워크로드 ${tiles.length} · ${new Date().toLocaleTimeString()}`;
+  const scope=(CL_FILTER==="*"?"전체":CL_FILTER)+(NS_FILTER==="*"?"":" / "+NS_FILTER);
+  document.getElementById("meta").textContent=`${scope} · 워크로드 ${tiles.length} · ${new Date().toLocaleTimeString()}`;
   if(!tiles.length){err.style.display="flex";err.textContent="표시할 워크로드 없음";return;}
-
-  // group: cluster -> namespace -> [workloads]
   const byCl={};
   for(const t of tiles){(byCl[t.cluster]=byCl[t.cluster]||{});(byCl[t.cluster][t.namespace]=byCl[t.cluster][t.namespace]||[]).push(t);}
   const sz=tileSize;
@@ -232,11 +259,14 @@ function render(data){
         const t=w.data;const g=document.createElementNS(NS,"g");const uh=unhealthy(t);
         g.appendChild(rect("wl",w.x+.6,w.y+.6,w.w-1.2,w.h-1.2,tileFill(t),2.5).also(r=>{
           r.setAttribute("stroke",uh?"#ffffff":"rgba(0,0,0,.35)");r.setAttribute("stroke-width",uh?1.6:.8);}));
-        if(w.w>40&&w.h>20){
-          const fs=Math.max(10,Math.min(13,w.w/6.5));
-          const nm=t.name.length*fs*.56>w.w-10?t.name.slice(0,Math.max(3,((w.w-10)/(fs*.56))|0))+"…":t.name;
-          g.appendChild(text("wl-label",w.x+6,w.y+fs+3,nm,fs));
-          if(w.h>36)g.appendChild(text("wl-sub",w.x+6,w.y+fs+16,`${t.ready}/${t.desired}`,Math.max(9.5,fs-2)));
+        if(w.w>30&&w.h>18){
+          const dn=displayName(t);
+          let fs=Math.min(w.w/(Math.max(4,dn.length)*0.60), w.h*0.44);
+          fs=Math.max(11,Math.min(30,fs));              // 나스닥 ticker 느낌 — 타일 클수록 큼
+          const nm=dn.length*fs*.6>w.w-8?dn.slice(0,Math.max(2,((w.w-8)/(fs*.6))|0))+"…":dn;
+          const cx=w.x+w.w/2, hasSub=w.h>46;
+          g.appendChild(text("wl-label",cx,w.y+w.h/2+(hasSub?-2:fs*0.34),nm,fs).also(e=>e.setAttribute("text-anchor","middle")));
+          if(hasSub)g.appendChild(text("wl-sub",cx,w.y+w.h/2+fs*0.82,`${t.ready}/${t.desired}`,Math.max(10,fs*0.48)).also(e=>e.setAttribute("text-anchor","middle")));
         }
         g.addEventListener("mousemove",e=>showTip(e,t));
         g.addEventListener("mouseleave",()=>tip.style.display="none");
