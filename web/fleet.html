@@ -29,7 +29,12 @@
   .seg button{background:none;border:none;color:var(--muted);font-size:11px;padding:4px 9px;cursor:pointer;transition:.12s;font-family:inherit;}
   .seg button.on{background:var(--accent);color:#fff;}
   .seg button:hover:not(.on){background:#1a212b;color:#fff;}
-  .ctrls{display:flex;gap:8px;align-items:center;flex-wrap:nowrap;}
+  .ctrls{display:flex;gap:10px;align-items:center;flex-wrap:nowrap;}
+  nav a,.seg,.ms>button{height:28px;box-sizing:border-box;}
+  nav a,.seg button,.ms>button{display:inline-flex;align-items:center;}
+  .sep{width:1px;height:20px;background:var(--border);display:inline-block;flex:0 0 auto;}
+  .spinner{width:22px;height:22px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
   .ms{position:relative;}
   .ms>button{background:#0e131a;color:var(--text);border:1px solid var(--border);border-radius:7px;padding:5px 10px;font:inherit;font-size:11px;cursor:pointer;white-space:nowrap;}
   .ms>button:hover{background:#1a212b;}
@@ -45,21 +50,25 @@
   .btn-an:hover{filter:brightness(1.1);} .btn-an:disabled{opacity:.6;cursor:wait;}
   #map{position:relative;width:100%;height:calc(100% - 46px);}
   svg{width:100%;height:100%;display:block;}
-  .wl{cursor:pointer;transition:opacity .15s;}
-  .wl:hover{opacity:.85;stroke:#fff !important;stroke-width:1.6 !important;}
-  .wl-label,.wl-sub{pointer-events:none;paint-order:stroke;stroke:rgba(0,0,0,.45);stroke-width:2.4px;stroke-linejoin:round;}
-  .wl-label{fill:#fff;font-weight:700;letter-spacing:.1px;}
-  .wl-sub{fill:rgba(255,255,255,.92);font-variant-numeric:tabular-nums;font-weight:600;}
+  .wl{cursor:pointer;transition:filter .15s ease,stroke-width .15s ease;}
+  .wl:hover{filter:brightness(1.12) saturate(1.08);stroke:#fff !important;stroke-width:2 !important;}
+  .wl-label,.wl-sub{pointer-events:none;paint-order:stroke;stroke:rgba(0,0,0,.42);stroke-linejoin:round;}
+  .wl-label{fill:#fff;font-weight:700;letter-spacing:.1px;stroke-width:2px;}
+  .wl-sub{fill:#f2f5fa;font-variant-numeric:tabular-nums;font-weight:600;stroke-width:1.6px;}
   .cl-box{fill:rgba(255,255,255,.012);stroke:var(--border);stroke-width:1.2;}
-  .cl-bar{fill:rgba(255,255,255,.045);}
+  .cl-bar{fill:rgba(255,255,255,.07);}
   .cl-label{pointer-events:none;fill:#eaf0f8;font-weight:800;font-size:12.5px;letter-spacing:.6px;}
   .cl-stat{pointer-events:none;fill:var(--muted);font-size:11px;font-variant-numeric:tabular-nums;}
-  .ns-box{fill:none;stroke:rgba(255,255,255,.08);stroke-width:1;}
+  .ns-box{fill:none;stroke:rgba(255,255,255,.13);stroke-width:1;}
   .ns-label{pointer-events:none;fill:#aab4c2;font-weight:700;font-size:11px;letter-spacing:.2px;}
   .ns-alert{pointer-events:none;fill:var(--red);font-weight:700;font-size:10px;}
-  #tip{position:fixed;pointer-events:none;background:rgba(8,11,16,.96);border:1px solid var(--border);padding:9px 12px;border-radius:9px;font-size:12px;display:none;max-width:300px;z-index:40;box-shadow:0 8px 28px rgba(0,0,0,.5);}
-  #tip b{font-size:13px;} #tip .k{color:var(--muted);}
-  #err{position:absolute;inset:0;display:none;align-items:center;justify-content:center;color:var(--muted);}
+  #tip{position:fixed;pointer-events:none;background:rgba(10,13,18,.9);backdrop-filter:blur(10px) saturate(1.2);border:1px solid rgba(255,255,255,.1);padding:9px 12px;border-radius:10px;font-size:12px;display:none;max-width:300px;z-index:40;box-shadow:0 12px 32px rgba(0,0,0,.6);line-height:1.6;}
+  #tip b{font-size:13px;font-weight:700;} #tip .k{color:var(--muted);font-size:11px;}
+  ::-webkit-scrollbar{width:9px;height:9px;}
+  ::-webkit-scrollbar-thumb{background:#2b333f;border-radius:6px;border:2px solid transparent;background-clip:padding-box;}
+  ::-webkit-scrollbar-thumb:hover{background:#3a4453;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  #err{position:absolute;inset:0;display:none;flex-direction:column;gap:12px;align-items:center;justify-content:center;color:var(--muted);font-size:13px;}
 
   /* 드릴 패널 */
   #panel{position:fixed;top:0;right:0;width:min(560px,94vw);height:100%;background:var(--bar);border-left:1px solid var(--border);
@@ -68,13 +77,14 @@
   .p-head{position:sticky;top:0;background:linear-gradient(180deg,#171d26,#141a22);padding:16px 20px;border-bottom:1px solid var(--border);z-index:1;}
   .p-head h2{margin:0;font-size:16px;font-weight:700;}
   .p-head .sub{color:var(--muted);font-size:12px;margin-top:3px;}
-  .p-close{position:absolute;top:14px;right:16px;cursor:pointer;color:var(--muted);font-size:22px;line-height:1;}
-  .p-close:hover{color:#fff;}
+  .p-close{position:absolute;top:12px;right:14px;cursor:pointer;color:var(--muted);font-size:21px;line-height:1;width:30px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:8px;}
+  .p-close:hover{background:#222b38;color:#fff;}
   .p-body{padding:4px 20px 28px;}
   .sec{margin-top:20px;}
   .sec h3{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 9px;display:flex;align-items:center;gap:8px;}
   .sec h3 .cnt{background:#222b38;color:#cdd6e2;border-radius:10px;padding:0 7px;font-size:10px;font-weight:700;}
-  .row{display:flex;align-items:center;gap:9px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;background:var(--bar2);}
+  .row{display:flex;align-items:center;gap:9px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;background:var(--bar2);transition:border-color .12s;}
+  .row:hover{border-color:#333c48;}
   .row .dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto;}
   .row .nm{font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .row .kind{color:var(--muted);font-size:11px;}
@@ -98,6 +108,7 @@
   <div class="ctrls">
     <div class="seg" id="cl-filter"><span class="lab">클러스터</span><button data-cl="*" class="on">전체</button></div>
     <div class="ms" id="ns-ms"><button id="ns-btn" type="button">전체 네임스페이스 ▾</button><div class="ms-menu" id="ns-menu"></div></div>
+    <span class="sep"></span>
     <div class="seg"><span class="lab">색</span>
       <button data-color="cpu" class="on">CPU</button><button data-color="mem">메모리</button><button data-color="health">헬스</button></div>
     <div class="seg"><span class="lab">크기</span>
@@ -107,7 +118,7 @@
   <div id="meta">—</div>
   <a href="/logout" style="color:var(--muted);font-size:11px;text-decoration:none;padding:4px 8px;">로그아웃</a>
 </header>
-<div id="map"><svg id="svg" preserveAspectRatio="none"></svg><div id="err"></div></div>
+<div id="map"><svg id="svg" preserveAspectRatio="none"></svg><div id="err" style="display:flex"><div class="spinner"></div>상황판 로딩 중…</div></div>
 <div id="tip"></div>
 
 <div id="panel">
@@ -118,7 +129,7 @@
 
 <script>
 const NS="http://www.w3.org/2000/svg";
-const CL_HEAD=24, NS_HEAD=15, GAP=3;
+const CL_HEAD=24, NS_HEAD=15, GAP=2;
 const C_GREEN="#1a9850",C_AMBER="#f6a623",C_RED="#d73027",C_GRAY="#3a4049";
 
 function wlColor(t){
@@ -186,10 +197,11 @@ function buildFilters(data){
 }
 function lerp(a,b,t){return Math.round(a+(b-a)*t);}
 // ColorBrewer RdYlGn(reversed) — 저사용 초록 → 고사용 빨강. finviz 급 부드러운 다단계.
-const _HEAT=[[26,152,80],[102,189,99],[166,217,106],[217,239,139],[255,255,191],
-             [254,224,139],[253,174,97],[244,109,67],[215,48,39]];
+// 다크 배경 튜닝 — 창백한 노랑(#ffffbf) 제거, 중간=골드, 빨강 3단계(주황→벽돌→옥스블러드)
+const _HEAT=[[33,145,80],[78,169,74],[132,184,70],[190,172,60],[224,163,54],
+             [223,122,48],[211,80,46],[187,48,45],[146,32,37]];
 function heat(v){
-  const t=Math.max(0,Math.min(1,Math.pow(v,0.55)));
+  const t=Math.max(0,Math.min(1,Math.pow(v,0.80)));   // 평상시 초록, 핫만 빨강
   const g=t*(_HEAT.length-1),i=Math.min(_HEAT.length-2,Math.floor(g)),f=g-i,a=_HEAT[i],b=_HEAT[i+1];
   return `rgb(${lerp(a[0],b[0],f)},${lerp(a[1],b[1],f)},${lerp(a[2],b[2],f)})`;
 }
@@ -215,7 +227,7 @@ function updateLegend(){
   }else{
     const lo=heat(0),mid=heat(.5),hi=heat(1);
     L.innerHTML=`<span class="muted">${COLOR_MODE==="cpu"?"CPU":"Mem"} 사용량</span>`+
-      `<span style="display:inline-block;width:90px;height:9px;border-radius:3px;background:linear-gradient(90deg,${lo},${mid},${hi})"></span>`+
+      `<span style="display:inline-block;width:120px;height:10px;border-radius:5px;background:linear-gradient(90deg,${lo},${mid},${hi});box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)"></span>`+
       `<span class="muted">낮음→높음</span><span><i style="background:${C_RED};border:1px solid #fff"></i>장애=흰테두리</span>`;
   }
 }
@@ -297,8 +309,8 @@ function render(data){
       const wlItems=ws.map(t=>({value:sz(t),data:t})).sort((a,b)=>b.value-a.value);
       for(const w of squarify(wlItems,wx,wy,ww,wh)){
         const t=w.data;const g=document.createElementNS(NS,"g");const uh=unhealthy(t);
-        g.appendChild(rect("wl",w.x+.6,w.y+.6,w.w-1.2,w.h-1.2,tileFill(t),2.5).also(r=>{
-          r.setAttribute("stroke",uh?"#ffffff":"rgba(0,0,0,.35)");r.setAttribute("stroke-width",uh?1.6:.8);}));
+        g.appendChild(rect("wl",w.x+.4,w.y+.4,w.w-.8,w.h-.8,tileFill(t),1.5).also(r=>{
+          r.setAttribute("stroke",uh?"#ffffff":"rgba(0,0,0,.28)");r.setAttribute("stroke-width",uh?1.8:.6);}));
         if(w.w>30&&w.h>18){
           const dn=displayName(t);
           let fs=Math.min(w.w/(Math.max(4,dn.length)*0.60), w.h*0.44);
