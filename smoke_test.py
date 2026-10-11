@@ -29,7 +29,8 @@ print(f"G1 dedup: 재전송 2건 전부 억제 (suppressed={gates.suppressed.sna
 # G2
 incs = gates.incidents.assemble(firing, NOW)
 assert len(incs) == 1, incs
-inc = incs[0]
+inc, is_new = incs[0]                              # assemble → [(incident, is_new)]
+assert is_new is True
 assert inc.severity.value == "critical"           # critical+warning → critical
 assert set(inc.alert_names) == {"KubePodCrashLooping", "TargetDown"}
 print(f"G2: 2 alerts → 1 incident {inc.id} sev={inc.severity.value} names={inc.alert_names}")

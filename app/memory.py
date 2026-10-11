@@ -56,26 +56,26 @@ def signature_text(incident, pack: dict[str, Any]) -> str:
     return f"cluster={incident.cluster} ns={incident.namespace} alerts=[{alerts}] reasons=[{reasons}] logs={log_hint}"[:2000]
 
 
-def find_similar(vector: list[float] | None) -> dict | None:
-    """가장 유사한 과거 인시던트. 유사도 < 임계값이면 None."""
+def find_similar(vector: list[float] | None, exclude_id: str | None = None) -> dict | None:
+    """가장 유사한 과거 인시던트(자기 자신 제외). 유사도 < 임계값이면 None."""
     if not (enabled() and vector):
         return None
     try:
         s3v, _ = _clients()
         r = s3v.query_vectors(vectorBucketName=config.s3vectors_bucket, indexName=config.s3vectors_index,
-                              queryVector={"float32": vector}, topK=1,
+                              queryVector={"float32": vector}, topK=3,
                               returnDistance=True, returnMetadata=True)
-        hits = r.get("vectors", [])
-        if not hits:
-            return None
-        h = hits[0]
-        sim = 1.0 - float(h.get("distance", 1.0))
-        if sim < config.similarity_threshold:
-            return None
-        m = h.get("metadata", {}) or {}
-        return {"incident_id": h.get("key"), "similarity": round(sim, 3),
-                "summary": m.get("summary", ""), "confidence": m.get("confidence", "low"),
-                "when": m.get("ts", ""), "cluster": m.get("cluster", ""), "namespace": m.get("namespace", "")}
+        for h in r.get("vectors", []):            # distance 오름차순(가까운 것 먼저)
+            if exclude_id and h.get("key") == exclude_id:
+                continue
+            sim = 1.0 - float(h.get("distance", 1.0))
+            if sim < config.similarity_threshold:
+                return None                        # 가장 가까운 것도 임계 미달 → 나머지도 미달
+            m = h.get("metadata", {}) or {}
+            return {"incident_id": h.get("key"), "similarity": round(sim, 3),
+                    "summary": m.get("summary", ""), "confidence": m.get("confidence", "low"),
+                    "when": m.get("ts", ""), "cluster": m.get("cluster", ""), "namespace": m.get("namespace", "")}
+        return None
     except Exception as e:
         print(f"[memory] query 실패: {type(e).__name__}: {e}")
         return None

@@ -105,23 +105,24 @@ class IncidentStore:
         self._seq += 1
         return f"INC-{int(now)}-{self._seq:03d}"
 
-    def assemble(self, alerts: list[Alert], now: float) -> list[Incident]:
-        """firing 알림을 토폴로지 창으로 묶어 인시던트 생성/갱신."""
+    def assemble(self, alerts: list[Alert], now: float) -> list[tuple[Incident, bool]]:
+        """firing 알림을 토폴로지 창으로 묶어 인시던트 생성/갱신.
+        반환: [(incident, is_new)] — is_new=이번 호출에서 처음 생성됨(= 분석 큐잉 대상)."""
         grouped: dict[str, list[Alert]] = defaultdict(list)
         for a in alerts:
             grouped[self._key(a)].append(a)
 
-        out: list[Incident] = []
+        out: list[tuple[Incident, bool]] = []
         with self._lock:
             for key, group in grouped.items():
                 inc = self._find_open(key, now)
+                is_new = inc is None
                 if inc is None:
                     cluster, ns = (key.split("/", 1) + ["?"])[:2]
-                    sev = _max_severity(group)
                     inc = Incident(
                         id=self._new_id(now),
                         signature=_signature(group),
-                        severity=sev,
+                        severity=_max_severity(group),
                         created_at=now,
                         updated_at=now,
                         cluster=cluster if cluster != "?" else None,
@@ -136,7 +137,7 @@ class IncidentStore:
                 inc.storm = len(inc.alerts) >= config.storm_threshold
                 inc.signature = _signature(inc.alerts)
                 inc.touch(now)
-                out.append(inc)
+                out.append((inc, is_new))
         return out
 
     def _find_open(self, key: str, now: float) -> Incident | None:
@@ -167,11 +168,15 @@ class IncidentStore:
         return n
 
     def _sweep_stale(self, now: float) -> None:
-        """안전망 — resolved 웹훅 누락 대비, 오래 안 갱신된 firing 은 자동 해소."""
-        ttl = config.incident_stale_ttl
-        for inc in self._incidents.values():
-            if inc.status == "firing" and (now - inc.updated_at) > ttl:
+        """안전망 — 오래된 firing 자동 해소 + 오래된 resolved 제거(스토어 무한증식 방지)."""
+        dead = []
+        for iid, inc in self._incidents.items():
+            if inc.status == "firing" and (now - inc.updated_at) > config.incident_stale_ttl:
                 inc.status = "resolved"
+            if inc.status == "resolved" and (now - inc.updated_at) > config.incident_evict_ttl:
+                dead.append(iid)
+        for iid in dead:
+            del self._incidents[iid]
 
     def all(self) -> list[Incident]:
         with self._lock:

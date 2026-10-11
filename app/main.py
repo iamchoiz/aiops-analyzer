@@ -73,7 +73,16 @@ async def logout():
 
 
 def _process(incident: Incident) -> None:
-    """백그라운드: G4 예산 체크 → Context Pack → 분석 → 저장 → Slack."""
+    """백그라운드 엔트리 — 전체 가드(실패해도 조용히 죽지 않음)."""
+    try:
+        _process_inner(incident)
+    except Exception:
+        import traceback
+        print(f"[process-fatal] {incident.id}: {traceback.format_exc()[-500:]}")
+
+
+def _process_inner(incident: Incident) -> None:
+    """G4 예산 체크 → Context Pack → (유사도|분석) → 저장 → Slack."""
     ok, reason = gates.budget.allow(incident, _now())
     if not ok:
         print(f"[g4-skip] {incident.id}: {reason}")
@@ -82,19 +91,22 @@ def _process(incident: Incident) -> None:
     # G3 유사도 — 과거와 충분히 유사하면(재발) 풀 분석 없이 과거 결론으로 즉답
     from . import memory
     vec = memory.embed(memory.signature_text(incident, pack))
-    similar = memory.find_similar(vec)
+    similar = memory.find_similar(vec, exclude_id=incident.id)
     if similar:
         report = _recurrence_report(incident, similar)
         print(f"[recurrence] {incident.id} ~ {similar['incident_id']} sim={similar['similarity']} (Bedrock 스킵)")
     else:
         try:
             report = analyze(incident, pack)
+            memory.remember(incident, report, vec, _now())    # 성공한 분석만 기억(실패/degraded 캐싱 방지)
         except Exception as e:
             report = _degraded_report(incident, e)
             print(f"[analyze-error] {incident.id}: {type(e).__name__}: {e}")
-        memory.remember(incident, report, vec, _now())        # 새 인시던트만 기억(재발 중복 적재 방지)
     gates.reports.set(incident.id, report.model_dump())      # §3 UI drill-down 소스
-    slack.post(incident, report)
+    try:
+        slack.post(incident, report)                         # Slack 실패는 비치명(리포트는 이미 저장)
+    except Exception as e:
+        print(f"[slack-error] {incident.id}: {type(e).__name__}: {e}")
     print(f"[done] {incident.id} confidence={report.overall_confidence} "
           f"needs_investigation={report.needs_investigation}")
 
@@ -137,9 +149,10 @@ async def webhook(payload: AlertmanagerWebhook, bg: BackgroundTasks):
                              "note": "쿨다운/전부 resolved"}, status_code=202)
     assembled = gates.incidents.assemble(firing, now)        # G2: 인시던트 조립
     queued = 0
-    for inc in assembled:
-        if inc.status == "firing":
-            bg.add_task(_process, inc)
+    for inc, is_new in assembled:
+        # 새로 생성된 인시던트만 1회 분석(중복 Bedrock/Slack 방지) + 스냅샷(백그라운드 읽기 레이스 방지)
+        if is_new and inc.status == "firing":
+            bg.add_task(_process, inc.model_copy(deep=True))
             queued += 1
     return JSONResponse({"status": "accepted", "incidents": queued,
                          "suppressed": gates.suppressed.snapshot()}, status_code=202)

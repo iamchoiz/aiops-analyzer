@@ -97,7 +97,9 @@ def fetch_login(token: str) -> str | None:
 def is_allowed(login: str | None) -> bool:
     if not login:
         return False
-    return login in ALLOWED if ALLOWED else True
+    if "*" in ALLOWED:              # 명시적 전체 허용(opt-in)
+        return True
+    return login in ALLOWED         # 빈 목록이면 전원 거부(fail-closed) — 허용목록 명시 강제
 
 
 def is_open_path(path: str) -> bool:

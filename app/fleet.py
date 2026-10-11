@@ -19,6 +19,12 @@ import urllib.request
 from typing import Any
 
 _ANSI = re.compile(r"\x1b\[[0-9;]*m")           # 터미널 색코드 제거
+# PromQL/LogQL 셀렉터에 들어가는 라벨 값 검증 — 인젝션/쿼리깨짐 방지(webhook 은 비인증 경로)
+_LABEL_RE = re.compile(r"^[A-Za-z0-9_.\-]{1,253}$")
+
+
+def _safe_label(s: str) -> bool:
+    return isinstance(s, str) and bool(_LABEL_RE.match(s))
 # DB/연결 장애는 err/fail 단어가 없는 경우 多 → 패턴 대폭 확대
 _ERR_PAT = (r"(?i)(err|error|exception|fatal|panic|fail|warn|refused|timeout|timed out|"
             r"unable|cannot|could not|econnrefused|enotfound|unavailable|denied|"
@@ -112,8 +118,12 @@ def fleet_snapshot() -> dict[str, Any]:
 
 # ──────────────────────────── L1 네임스페이스 상세 ────────────────────────────
 def namespace_detail(cluster: str, namespace: str) -> dict[str, Any]:
-    f = f'cluster="{cluster}",namespace="{namespace}"'
     out: dict[str, Any] = {"cluster": cluster, "namespace": namespace}
+    if not (_safe_label(cluster) and _safe_label(namespace)):
+        out["error"] = "invalid cluster/namespace label"
+        out["logs"] = {"lines": []}
+        return out
+    f = f'cluster="{cluster}",namespace="{namespace}"'
     try:
         out["workloads"] = _workloads(f)
         out["problem_pods"] = _problem_pods(f)
@@ -205,6 +215,8 @@ def _safe_logs(cluster: str, namespace: str) -> dict[str, Any]:
 
 def loki_recent_logs(cluster: str, namespace: str, limit: int = 30, hours: float = 6) -> list[dict]:
     """에러성 로그 — 넓은 패턴. 없으면 일반 최근 로그 폴백(빈 패널 방지). ANSI 제거."""
+    if not (_safe_label(cluster) and _safe_label(namespace)):
+        return []
     now = time.time()
     start = int((now - hours * 3600) * 1e9)
     end = int(now * 1e9)
