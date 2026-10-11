@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AIOps 인시던트 히트맵</title>
+<style>
+  :root {
+    --bg: #0e1116; --panel: #161b22; --border: #30363d; --text: #e6edf3; --muted: #8b949e;
+    --green: #1a7f37; --amber: #9e6a03; --red: #b62324; --gray: #30363d;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.5 -apple-system, "Segoe UI", system-ui, sans-serif; }
+  header { display: flex; align-items: center; gap: 16px; padding: 12px 20px;
+           border-bottom: 1px solid var(--border); }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  header .meta { color: var(--muted); font-size: 12px; margin-left: auto; }
+  .legend { display: flex; gap: 12px; font-size: 12px; color: var(--muted); }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+  #map { position: relative; width: 100%; height: calc(100vh - 54px); }
+  svg { width: 100%; height: 100%; display: block; }
+  .tile { cursor: pointer; transition: fill .6s ease, opacity .3s ease; }
+  .tile:hover { opacity: .85; stroke: #fff; stroke-width: 1.5; }
+  .tile-label { pointer-events: none; fill: #fff; font-weight: 600; }
+  .tile-sub { pointer-events: none; fill: rgba(255,255,255,.75); font-size: 11px; }
+  #empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+           color: var(--muted); }
+  #tooltip { position: fixed; pointer-events: none; background: #000d; border: 1px solid var(--border);
+             padding: 6px 10px; border-radius: 6px; font-size: 12px; display: none; max-width: 280px; z-index: 20; }
+  /* 리포트 슬라이드인 */
+  #panel { position: fixed; top: 0; right: 0; width: min(480px, 92vw); height: 100vh; background: var(--panel);
+           border-left: 1px solid var(--border); transform: translateX(100%); transition: transform .25s ease;
+           overflow-y: auto; z-index: 30; padding: 20px; }
+  #panel.open { transform: translateX(0); }
+  #panel h2 { font-size: 15px; margin: 0 0 4px; }
+  #panel .close { position: absolute; top: 14px; right: 16px; cursor: pointer; color: var(--muted); font-size: 20px; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+  .b-high { background: var(--green); } .b-medium { background: var(--amber); } .b-low { background: var(--red); }
+  .b-crit { background: var(--red); } .b-warn { background: var(--amber); } .b-none { background: var(--gray); }
+  .sec { margin-top: 16px; }
+  .sec h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 6px; }
+  .sec ul { margin: 0; padding-left: 18px; }
+  .sec a { color: #58a6ff; }
+  .hyp { border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; }
+  .hyp .cause { font-weight: 600; }
+  .gap { color: #d29922; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🔥 AIOps 인시던트 히트맵</h1>
+  <div class="legend">
+    <span><i style="background:var(--red)"></i>critical</span>
+    <span><i style="background:var(--amber)"></i>warning</span>
+    <span><i style="background:var(--green)"></i>resolved</span>
+    <span>크기 = 영향범위(묶인 알림 수)</span>
+  </div>
+  <div class="meta" id="meta">—</div>
+</header>
+
+<div id="map">
+  <svg id="svg" preserveAspectRatio="none"></svg>
+  <div id="empty">인시던트 없음 — 전부 정상 🟢</div>
+</div>
+<div id="tooltip"></div>
+
+<div id="panel">
+  <span class="close" onclick="closePanel()">×</span>
+  <div id="panel-body"></div>
+</div>
+
+<script>
+// 나스닥 히트맵 = treemap(타일 크기=값, 색=상태). CDN 의존 없는 self-contained squarified treemap.
+// 교체 지점: 더 리치한 인터랙션이 필요하면 ECharts treemap 으로 스왑(§6) — 데이터 계약(/api/incidents)은 동일.
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+function color(inc) {
+  if (inc.status === "resolved") return "var(--green)";
+  if (inc.severity === "critical") {
+    // intensity = severity×지속시간 — 오래 firing 일수록 진한 빨강
+    const ageMin = Math.max(0, (Date.now()/1000 - inc.created_at) / 60);
+    const t = Math.min(1, ageMin / 30);
+    const r = Math.round(130 + 90 * t), g = Math.round(40 - 20 * t), b = Math.round(40 - 20 * t);
+    return `rgb(${r},${g},${b})`;
+  }
+  if (inc.severity === "warning") return "var(--amber)";
+  return "var(--gray)";
+}
+
+// ---- squarified treemap ----
+function squarify(items, x, y, w, h) {
+  // items: [{value, data}] 내림차순. 반환: [{x,y,w,h,data}]
+  const out = [];
+  const total = items.reduce((s, it) => s + it.value, 0) || 1;
+  let area = { x, y, w, h };
+  let remaining = items.map(it => ({ ...it, area: it.value / total * (w * h) }));
+
+  function worst(row, len) {
+    const s = row.reduce((a, b) => a + b.area, 0);
+    const mx = Math.max(...row.map(b => b.area));
+    const mn = Math.min(...row.map(b => b.area));
+    return Math.max((len * len * mx) / (s * s), (s * s) / (len * len * mn));
+  }
+
+  function layoutRow(row, horizontal) {
+    const s = row.reduce((a, b) => a + b.area, 0);
+    if (horizontal) {
+      const rh = s / area.w;
+      let cx = area.x;
+      for (const b of row) {
+        const bw = b.area / rh;
+        out.push({ x: cx, y: area.y, w: bw, h: rh, data: b.data });
+        cx += bw;
+      }
+      area = { x: area.x, y: area.y + rh, w: area.w, h: area.h - rh };
+    } else {
+      const rw = s / area.h;
+      let cy = area.y;
+      for (const b of row) {
+        const bh = b.area / rw;
+        out.push({ x: area.x, y: cy, w: rw, h: bh, data: b.data });
+        cy += bh;
+      }
+      area = { x: area.x + rw, y: area.y, w: area.w - rw, h: area.h };
+    }
+  }
+
+  let row = [];
+  while (remaining.length) {
+    const horizontal = area.w >= area.h;
+    const len = horizontal ? area.w : area.h;
+    const next = remaining[0];
+    if (row.length === 0 || worst(row, len) >= worst([...row, next], len)) {
+      row.push(next);
+      remaining.shift();
+    } else {
+      layoutRow(row, horizontal);
+      row = [];
+    }
+  }
+  if (row.length) layoutRow(row, area.w >= area.h);
+  return out;
+}
+
+const tooltip = document.getElementById("tooltip");
+
+function render(incidents) {
+  const svg = document.getElementById("svg");
+  const empty = document.getElementById("empty");
+  svg.innerHTML = "";
+  const firing = incidents.filter(i => i.status === "firing");
+  const shown = incidents.length ? incidents : [];
+  empty.style.display = shown.length ? "none" : "flex";
+  document.getElementById("meta").textContent =
+    `인시던트 ${incidents.length} · firing ${firing.length} · ${new Date().toLocaleTimeString()}`;
+  if (!shown.length) return;
+
+  const rect = svg.getBoundingClientRect();
+  const W = rect.width, H = rect.height;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+
+  const items = shown
+    .map(i => ({ value: Math.max(1, i.alert_count), data: i }))
+    .sort((a, b) => b.value - a.value);
+  const tiles = squarify(items, 0, 0, W, H);
+
+  for (const t of tiles) {
+    const g = document.createElementNS(SVG_NS, "g");
+    const r = document.createElementNS(SVG_NS, "rect");
+    r.setAttribute("class", "tile");
+    r.setAttribute("x", t.x + 1); r.setAttribute("y", t.y + 1);
+    r.setAttribute("width", Math.max(0, t.w - 2)); r.setAttribute("height", Math.max(0, t.h - 2));
+    r.setAttribute("rx", 4);
+    r.setAttribute("fill", color(t.data));
+    r.setAttribute("stroke", "rgba(0,0,0,.35)");
+    g.appendChild(r);
+
+    if (t.w > 56 && t.h > 30) {
+      const label = document.createElementNS(SVG_NS, "text");
+      label.setAttribute("class", "tile-label");
+      label.setAttribute("x", t.x + 8); label.setAttribute("y", t.y + 20);
+      label.setAttribute("font-size", Math.min(16, t.w / 8));
+      label.textContent = t.data.namespace || t.data.cluster || t.data.id;
+      g.appendChild(label);
+      if (t.h > 48) {
+        const sub = document.createElementNS(SVG_NS, "text");
+        sub.setAttribute("class", "tile-sub");
+        sub.setAttribute("x", t.x + 8); sub.setAttribute("y", t.y + 38);
+        sub.textContent = `${t.data.alert_count} alerts${t.data.storm ? " ⚠️storm" : ""}`;
+        g.appendChild(sub);
+      }
+    }
+
+    g.addEventListener("click", () => openPanel(t.data.id));
+    g.addEventListener("mousemove", (e) => {
+      tooltip.style.display = "block";
+      tooltip.style.left = (e.clientX + 12) + "px";
+      tooltip.style.top = (e.clientY + 12) + "px";
+      tooltip.innerHTML =
+        `<b>${t.data.id}</b><br>${t.data.cluster || "?"}/${t.data.namespace || "?"} · ${t.data.severity}<br>` +
+        `${(t.data.alert_names || []).join(", ")}<br>${t.data.has_report ? "클릭 → 분석 리포트" : "분석 대기중"}`;
+    });
+    g.addEventListener("mouseleave", () => tooltip.style.display = "none");
+    svg.appendChild(g);
+  }
+}
+
+async function openPanel(id) {
+  location.hash = "inc=" + id;        // 공유 가능한 딥링크
+  const body = document.getElementById("panel-body");
+  body.innerHTML = "불러오는 중…";
+  document.getElementById("panel").classList.add("open");
+  const res = await fetch(`/api/incidents/${id}`);
+  if (!res.ok) { body.innerHTML = "불러오기 실패"; return; }
+  const { incident, report } = await res.json();
+  body.innerHTML = renderReport(incident, report);
+}
+function closePanel() {
+  document.getElementById("panel").classList.remove("open");
+  history.replaceState(null, "", location.pathname);
+}
+// 딥링크(#inc=ID)로 진입하면 해당 리포트 자동 오픈
+function openFromHash() {
+  const m = location.hash.match(/inc=([^&]+)/);
+  if (m) openPanel(decodeURIComponent(m[1]));
+}
+
+function esc(s) { return (s ?? "").toString().replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])); }
+
+function renderReport(inc, rep) {
+  const sevClass = { critical: "b-crit", warning: "b-warn", none: "b-none" }[inc.severity] || "b-none";
+  let h = `<h2>${esc(inc.id)}</h2>
+    <div><span class="badge ${sevClass}">${inc.severity}</span>
+    <span class="badge b-none">${inc.status}</span>
+    ${inc.storm ? '<span class="badge b-crit">⚠️ storm</span>' : ""}</div>
+    <div style="color:var(--muted);margin-top:6px">${esc(inc.cluster)}/${esc(inc.namespace)} · 알림 ${inc.alerts.length}건</div>`;
+  if (!rep) return h + `<div class="sec"><em style="color:var(--muted)">분석 리포트 아직 없음(분석 대기/스킵)</em></div>`;
+
+  const cb = { high: "b-high", medium: "b-medium", low: "b-low" }[rep.overall_confidence] || "b-none";
+  h += `<div class="sec"><h3>결론 <span class="badge ${cb}">confidence ${rep.overall_confidence}</span></h3>
+        <div>${esc(rep.summary)}</div></div>`;
+
+  if (rep.root_cause_hypotheses?.length) {
+    h += `<div class="sec"><h3>원인 가설</h3>`;
+    for (const hp of rep.root_cause_hypotheses) {
+      const c = { high: "b-high", medium: "b-medium", low: "b-low" }[hp.confidence] || "b-none";
+      h += `<div class="hyp"><div class="cause">${esc(hp.cause)} <span class="badge ${c}">${hp.confidence}</span></div>`;
+      if (hp.ruled_out_reason) h += `<div style="color:var(--muted)">배제: ${esc(hp.ruled_out_reason)}</div>`;
+      if (hp.evidence?.length) {
+        h += `<ul>` + hp.evidence.map(e =>
+          `<li>[${esc(e.source)}] ${esc(e.description)}${e.link ? ` <a href="${esc(e.link)}" target="_blank">🔗</a>` : ""}</li>`
+        ).join("") + `</ul>`;
+      }
+      h += `</div>`;
+    }
+    h += `</div>`;
+  }
+  if (rep.checked_and_ruled_out?.length)
+    h += sec("확인했고 배제한 것", rep.checked_and_ruled_out.map(esc));
+  if (rep.suggested_actions?.length)
+    h += sec("제안 조치", rep.suggested_actions.map(esc));
+  if (rep.data_gaps?.length)
+    h += `<div class="sec"><h3>데이터 공백</h3><div class="gap">${rep.data_gaps.map(esc).join(", ")}</div></div>`;
+  if (rep.timeline?.length)
+    h += sec("타임라인", rep.timeline.map(esc));
+  return h;
+}
+function sec(title, lines) {
+  return `<div class="sec"><h3>${title}</h3><ul>${lines.map(l => `<li>${l}</li>`).join("")}</ul></div>`;
+}
+
+async function tick() {
+  try {
+    const res = await fetch("/api/incidents");
+    render(await res.json());
+  } catch (e) { /* 소스 장애 시 마지막 화면 유지 */ }
+}
+tick().then(openFromHash);
+setInterval(tick, 3000);        // 실시간 — 색 전환은 CSS transition(.6s). SSE 업그레이드는 Phase 2.
+window.addEventListener("resize", tick);
+</script>
+</body>
+</html>

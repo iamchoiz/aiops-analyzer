@@ -1,0 +1,24 @@
+{
+  "version": "4",
+  "status": "firing",
+  "receiver": "aiops-analyzer",
+  "groupLabels": {"alertname": "KubePodCrashLooping"},
+  "commonLabels": {"cluster": "tle-spoke-01", "namespace": "boutique", "severity": "critical"},
+  "externalURL": "https://alertmanager.eks.typelearn.co.kr",
+  "alerts": [
+    {
+      "status": "firing",
+      "labels": {"alertname": "KubePodCrashLooping", "cluster": "tle-spoke-01", "namespace": "boutique", "pod": "cartservice-7d9", "container": "server", "severity": "critical", "reason": "CrashLoopBackOff"},
+      "annotations": {"summary": "cartservice CrashLoopBackOff", "description": "Pod cartservice-7d9 restarting 8 times in 5m", "runbook_url": "https://runbook/crashloop"},
+      "startsAt": "2026-10-11T14:13:00Z",
+      "fingerprint": "aaaa1111bbbb2222"
+    },
+    {
+      "status": "firing",
+      "labels": {"alertname": "TargetDown", "cluster": "tle-spoke-01", "namespace": "boutique", "job": "cartservice", "severity": "warning"},
+      "annotations": {"summary": "cartservice target down", "description": "job cartservice has targets down"},
+      "startsAt": "2026-10-11T14:13:30Z",
+      "fingerprint": "cccc3333dddd4444"
+    }
+  ]
+}

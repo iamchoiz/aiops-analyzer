@@ -1,0 +1,72 @@
+# AIOps analyzer CI — build → ECR → gitops 이미지 태그 bump.
+# typing-learn 의 eks-deploy-task.yml 패턴 참조(self-hosted·buildx arm64·GITOPS_TOKEN).
+# 차이: aiops 는 raw 매니페스트(platform/hub/aiops/deployment.yaml)라 values 대신 image 라인을 bump.
+name: build-and-deploy
+on:
+  workflow_dispatch:
+    inputs:
+      TAG:
+        description: "이미지 태그 (비우면 커밋 SHA)"
+        type: string
+        default: ""
+  push:
+    branches: [main]
+    paths: ["app/**", "web/**", "Dockerfile", "requirements.txt"]
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: ap-northeast-2
+  ECR_REGISTRY: 041915167218.dkr.ecr.ap-northeast-2.amazonaws.com
+  ECR_REPO: tle/aiops-analyzer
+  GITOPS_REPO: iamchoiz/typinglearn-eks-gitops
+  DEPLOY_FILE: platform/hub/aiops/deployment.yaml
+
+jobs:
+  deploy:
+    runs-on: [self-hosted]
+    steps:
+      - name: Checkout 앱 레포
+        uses: actions/checkout@v4
+        with:
+          path: app
+
+      - name: Config
+        id: cfg
+        run: |
+          BASE="${{ inputs.TAG }}"
+          [ -z "$BASE" ] && BASE="$(git -C app rev-parse --short HEAD)"
+          TAG="$BASE-$(TZ=Asia/Seoul date +%y%m%d%H%M)"   # 같은 커밋 재배포 구분(KST)
+          echo "TAG=$TAG" >> "$GITHUB_OUTPUT"
+          echo "IMAGE=$ECR_REGISTRY/$ECR_REPO:$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Build & push
+        env:
+          IMAGE: ${{ steps.cfg.outputs.IMAGE }}
+        run: |
+          set -euo pipefail
+          aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REGISTRY"
+          docker buildx build app --platform linux/arm64 -t "$IMAGE" --push
+
+      - name: Checkout gitops 레포
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.GITOPS_REPO }}
+          token: ${{ secrets.GITOPS_TOKEN }}
+          path: gitops
+
+      - name: Bump image tag & push
+        env:
+          IMAGE: ${{ steps.cfg.outputs.IMAGE }}
+          TAG: ${{ steps.cfg.outputs.TAG }}
+        run: |
+          set -euo pipefail
+          # deployment.yaml 의 image: 라인을 신규 태그로 치환
+          perl -pi -e 's|^(\s*image:\s*).*tle/aiops-analyzer:.*|${1}'"$IMAGE"'|' "gitops/$DEPLOY_FILE"
+          cd gitops
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$DEPLOY_FILE"
+          git commit -m "ci(aiops): image → $TAG"
+          for i in 1 2 3; do git push && exit 0; git pull --rebase; done
