@@ -30,8 +30,17 @@
   .seg button.on{background:var(--accent);color:#fff;}
   .seg button:hover:not(.on){background:#1a212b;color:#fff;}
   .ctrls{display:flex;gap:8px;align-items:center;flex-wrap:nowrap;}
-  select{background:#0e131a;color:var(--text);border:1px solid var(--border);border-radius:7px;padding:5px 8px;font-family:inherit;font-size:11px;cursor:pointer;}
-  select:focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
+  .ms{position:relative;}
+  .ms>button{background:#0e131a;color:var(--text);border:1px solid var(--border);border-radius:7px;padding:5px 10px;font:inherit;font-size:11px;cursor:pointer;white-space:nowrap;}
+  .ms>button:hover{background:#1a212b;}
+  .ms-menu{position:absolute;top:110%;left:0;z-index:60;min-width:200px;max-height:340px;overflow:auto;
+    background:#11161d;border:1px solid var(--border);border-radius:9px;padding:6px;display:none;box-shadow:0 10px 34px rgba(0,0,0,.5);}
+  .ms-menu.open{display:block;}
+  .ms-menu label{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;font-size:12px;cursor:pointer;white-space:nowrap;}
+  .ms-menu label:hover{background:#1a212b;}
+  .ms-menu input{accent-color:var(--accent);}
+  .ms-menu .div{height:1px;background:var(--border);margin:5px 2px;}
+  .ms-menu .grp{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding:4px 8px 2px;}
   .btn-an{background:linear-gradient(180deg,#3b7bff,#2f6ae0);color:#fff;border:none;border-radius:8px;padding:9px 14px;font-size:13px;font-weight:600;cursor:pointer;width:100%;margin-top:6px;transition:.15s;}
   .btn-an:hover{filter:brightness(1.1);} .btn-an:disabled{opacity:.6;cursor:wait;}
   #map{position:relative;width:100%;height:calc(100% - 46px);}
@@ -88,7 +97,7 @@
   <nav><a href="/ui/fleet.html" class="active">현황</a><a href="/ui/">인시던트</a></nav>
   <div class="ctrls">
     <div class="seg" id="cl-filter"><span class="lab">클러스터</span><button data-cl="*" class="on">전체</button></div>
-    <select id="ns-filter"><option value="*">전체 네임스페이스</option></select>
+    <div class="ms" id="ns-ms"><button id="ns-btn" type="button">전체 네임스페이스 ▾</button><div class="ms-menu" id="ns-menu"></div></div>
     <div class="seg"><span class="lab">색</span>
       <button data-color="cpu" class="on">CPU</button><button data-color="mem">메모리</button><button data-color="health">헬스</button></div>
     <div class="seg"><span class="lab">크기</span>
@@ -110,12 +119,15 @@
 <script>
 const NS="http://www.w3.org/2000/svg";
 const CL_HEAD=24, NS_HEAD=15, GAP=3;
-const C_GREEN="#2f9e44",C_AMBER="#d9a441",C_RED="#d6453d",C_GRAY="#39404a";
+const C_GREEN="#1a9850",C_AMBER="#f6a623",C_RED="#d73027",C_GRAY="#3a4049";
 
 function wlColor(t){
   if(!t.desired) return C_GRAY;
   if(t.ready===0) return C_RED;
-  if(t.ready<t.desired) return C_AMBER;
+  if(t.ready<t.desired){                      // degraded — 부족분 많을수록 주황→빨강
+    const f=(t.desired-t.ready)/t.desired;
+    return `rgb(${lerp(246,215,f)},${lerp(166,48,f)},${lerp(35,39,f)})`;
+  }
   return C_GREEN;
 }
 function wlStatus(t){
@@ -129,6 +141,14 @@ function esc(s){return (s??"").toString().replace(/[&<>]/g,c=>({"&":"&amp;","<":
 // ── 색/크기 모드 (finviz 맵뷰 전환) ──
 let COLOR_MODE="cpu", SIZE_MODE="replicas", LAST=null, _maxCpu=0.001, _maxMem=1;
 let CL_FILTER="*", NS_FILTER="*", _filterSig="";
+// 애드온/플랫폼 ns (전체 보기일 때 블록 축소 → 서비스 강조)
+const ADDON_NS=new Set(["kube-system","kube-public","kube-node-lease","monitoring","logging",
+  "cert-manager","external-secrets","external-dns","keda","kyverno","argo-rollouts","argocd",
+  "policy-reporter","aiops","gatekeeper-system","istio-system","ingress-nginx","velero","vault"]);
+const ADDON_W=0.2;        // 애드온 블록 크기 배율(작게)
+function nsMatch(t){return NS_FILTER==="*"||NS_FILTER.includes(t.namespace);}
+function nsWeight(ns){return (NS_FILTER==="*" && ADDON_NS.has(ns)) ? ADDON_W : 1;}
+
 // 나스닥 ticker 처럼 짧고 크게 — 클러스터 접미사 제거 + 공통 prefix 축약
 function displayName(t){
   let n=t.name;
@@ -142,16 +162,36 @@ function buildFilters(data){
   clBox.innerHTML='<span class="lab">클러스터</span><button data-cl="*">전체</button>'+clusters.map(c=>`<button data-cl="${c}">${c}</button>`).join("");
   clBox.querySelectorAll("button").forEach(b=>{b.classList.toggle("on",b.dataset.cl===CL_FILTER);
     b.onclick=()=>{CL_FILTER=b.dataset.cl;NS_FILTER="*";_filterSig="";if(LAST){buildFilters(LAST);render(LAST);}};});
-  const nsSel=document.getElementById("ns-filter");
+
+  const menu=document.getElementById("ns-menu"), btn=document.getElementById("ns-btn");
   const nss=[...new Set((data.tiles||[]).filter(t=>CL_FILTER==="*"||t.cluster===CL_FILTER).map(t=>t.namespace))].sort();
-  nsSel.innerHTML='<option value="*">전체 네임스페이스</option>'+nss.map(n=>`<option value="${n}"${n===NS_FILTER?" selected":""}>${n}</option>`).join("");
-  nsSel.onchange=()=>{NS_FILTER=nsSel.value;render(LAST);};
+  const svc=nss.filter(n=>!ADDON_NS.has(n)), addon=nss.filter(n=>ADDON_NS.has(n));
+  const sel=NS_FILTER==="*"?new Set():new Set(NS_FILTER);
+  const box=(n)=>`<label><input type="checkbox" value="${n}" ${sel.has(n)?"checked":""}> ${n}</label>`;
+  menu.innerHTML=`<label><input type="checkbox" value="*" ${NS_FILTER==="*"?"checked":""}> <b>전체</b></label>`+
+    (svc.length?`<div class="grp">서비스</div>`+svc.map(box).join(""):"")+
+    (addon.length?`<div class="grp">애드온/플랫폼</div>`+addon.map(box).join(""):"");
+  btn.textContent=(NS_FILTER==="*"?"전체 네임스페이스":`${NS_FILTER.length}개 선택`)+" ▾";
+  btn.onclick=(e)=>{e.stopPropagation();menu.classList.toggle("open");};
+  menu.onclick=(e)=>e.stopPropagation();
+  menu.querySelectorAll("input").forEach(cb=>cb.onchange=()=>{
+    const allCb=menu.querySelector('input[value="*"]');
+    if(cb.value==="*"&&cb.checked){menu.querySelectorAll('input').forEach(x=>{if(x.value!=="*")x.checked=false;});NS_FILTER="*";}
+    else{allCb.checked=false;
+      const ck=[...menu.querySelectorAll("input")].filter(x=>x.value!=="*"&&x.checked).map(x=>x.value);
+      NS_FILTER=ck.length?ck:"*"; if(NS_FILTER==="*")allCb.checked=true;}
+    btn.textContent=(NS_FILTER==="*"?"전체 네임스페이스":`${NS_FILTER.length}개 선택`)+" ▾";
+    render(LAST);
+  });
 }
 function lerp(a,b,t){return Math.round(a+(b-a)*t);}
-function heat(v){ // 0..1 → 초록→노랑→주황→빨강 (저사용=cool, 고사용=hot)
-  const s=[[31,122,51],[217,196,65],[232,135,44],[214,69,61]];
-  const t=Math.max(0,Math.min(1,Math.pow(v,0.6)));const g=t*3,i=Math.min(2,Math.floor(g)),f=g-i;
-  return `rgb(${lerp(s[i][0],s[i+1][0],f)},${lerp(s[i][1],s[i+1][1],f)},${lerp(s[i][2],s[i+1][2],f)})`;
+// ColorBrewer RdYlGn(reversed) — 저사용 초록 → 고사용 빨강. finviz 급 부드러운 다단계.
+const _HEAT=[[26,152,80],[102,189,99],[166,217,106],[217,239,139],[255,255,191],
+             [254,224,139],[253,174,97],[244,109,67],[215,48,39]];
+function heat(v){
+  const t=Math.max(0,Math.min(1,Math.pow(v,0.55)));
+  const g=t*(_HEAT.length-1),i=Math.min(_HEAT.length-2,Math.floor(g)),f=g-i,a=_HEAT[i],b=_HEAT[i+1];
+  return `rgb(${lerp(a[0],b[0],f)},${lerp(a[1],b[1],f)},${lerp(a[2],b[2],f)})`;
 }
 function tileFill(t){
   if(COLOR_MODE==="health") return wlColor(t);
@@ -219,17 +259,17 @@ function render(data){
   LAST=data;
   const sig=(data.clusters||[]).map(c=>c.cluster).join(",");
   if(sig!==_filterSig){_filterSig=sig;buildFilters(data);}
-  const tiles=alltiles.filter(t=>(CL_FILTER==="*"||t.cluster===CL_FILTER)&&(NS_FILTER==="*"||t.namespace===NS_FILTER));
+  const tiles=alltiles.filter(t=>(CL_FILTER==="*"||t.cluster===CL_FILTER)&&nsMatch(t));
   _maxCpu=Math.max(0.001,...tiles.map(t=>t.cpu||0));
   _maxMem=Math.max(1,...tiles.map(t=>t.mem||0));
   updateLegend();
   const r=SVG.getBoundingClientRect();W=r.width;H=r.height;SVG.setAttribute("viewBox",`0 0 ${W} ${H}`);
-  const scope=(CL_FILTER==="*"?"전체":CL_FILTER)+(NS_FILTER==="*"?"":" / "+NS_FILTER);
+  const scope=(CL_FILTER==="*"?"전체":CL_FILTER)+(NS_FILTER==="*"?"":" / "+(Array.isArray(NS_FILTER)?(NS_FILTER.length>2?NS_FILTER.length+"개 ns":NS_FILTER.join("+")):NS_FILTER));
   document.getElementById("meta").textContent=`${scope} · 워크로드 ${tiles.length} · ${new Date().toLocaleTimeString()}`;
   if(!tiles.length){err.style.display="flex";err.textContent="표시할 워크로드 없음";return;}
   const byCl={};
   for(const t of tiles){(byCl[t.cluster]=byCl[t.cluster]||{});(byCl[t.cluster][t.namespace]=byCl[t.cluster][t.namespace]||[]).push(t);}
-  const sz=tileSize;
+  const sz=t=>tileSize(t)*nsWeight(t.namespace);   // 전체 보기 시 애드온 축소·서비스 강조
   const clItems=Object.entries(byCl).map(([c,nss])=>({value:Object.values(nss).flat().reduce((s,t)=>s+sz(t),0),data:{c,nss}}))
     .sort((a,b)=>b.value-a.value);
 
@@ -365,6 +405,8 @@ document.querySelectorAll('[data-color]').forEach(b=>b.onclick=()=>{
   COLOR_MODE=b.dataset.color;document.querySelectorAll('[data-color]').forEach(x=>x.classList.toggle('on',x===b));if(LAST)render(LAST);});
 document.querySelectorAll('[data-size]').forEach(b=>b.onclick=()=>{
   SIZE_MODE=b.dataset.size;document.querySelectorAll('[data-size]').forEach(x=>x.classList.toggle('on',x===b));if(LAST)render(LAST);});
+
+document.addEventListener("click",()=>document.getElementById("ns-menu")?.classList.remove("open"));
 
 async function tick(){try{render(await(await fetch("/api/fleet")).json());}catch(e){}}
 tick().then(fromHash);
