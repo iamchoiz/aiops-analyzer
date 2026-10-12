@@ -7,6 +7,14 @@ EKS 허브-스포크 플랫폼의 관측 스택(Prometheus/Thanos·Loki·CloudWa
 
 ---
 
+## 동작 시퀀스 — 알림 1건이 들어오면
+
+![동작 시퀀스](docs/img/sequence.png)
+
+> ● 현재 동작 · ➕ 추가로 붙일 수 있는 것(로드맵). 전체 설계·발표자료: [`docs/architecture-deck.html`](docs/architecture-deck.html)
+
+---
+
 ## 설계 원칙
 
 | 항목 | 결정 |
