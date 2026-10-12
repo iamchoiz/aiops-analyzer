@@ -111,6 +111,12 @@
   .tl .what{padding-top:4px;}
   .tl .what b{font-size:15px;letter-spacing:-.01em;} .tl .what span{color:var(--muted);font-size:13px;line-height:1.5;}
   .tl .what .mono{font-family:var(--mono);font-size:12px;color:var(--blue);background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:1px 6px;}
+  .tl .step.compact{padding:7px 0;} .tl .step.compact .what span{font-size:12.5px;}
+  .tl .add{display:block;margin-top:5px;font-size:12px;color:#9a6a12;border:1px dashed var(--amber);border-radius:7px;padding:4px 9px;background:rgba(217,138,31,.07);}
+  .tl .add b{color:#9a6a12;font-size:12px;}
+  .seq-legend{display:flex;gap:18px;margin:6px 0 2px;font-size:12.5px;color:var(--muted);align-items:center;}
+  .seq-legend .l-live::before{content:"●";color:var(--green);margin-right:6px;}
+  .seq-legend .l-add::before{content:"➕";margin-right:6px;}
   @media(max-width:860px){.tl .step{grid-template-columns:30px 1fr;} .tl .who{display:none;}}
 
   /* 수집 & 판단 스펙 리스트 */
@@ -223,16 +229,18 @@
     <div class="wrap">
       <div class="eyebrow">상세 시퀀스 · 알림 1건이 들어오면</div>
       <h2>순서대로 이렇게 동작한다</h2>
+      <div class="seq-legend"><span class="l-live"><b>현재 동작</b></span><span class="l-add"><b>추가로 붙일 수 있는 것</b>(로드맵)</span></div>
       <div class="tl">
-        <div class="step"><div class="n">1</div><div class="who">Alertmanager</div><div class="what"><b>알림 발화</b> <span>Prometheus/Thanos Ruler 가 룰 위반 감지 → Alertmanager 로. critical/warning 알림이 <span class="mono">continue</span> 복사로 analyzer 에도 전달(기존 Slack/PagerDuty 라우팅은 그대로).</span></div></div>
-        <div class="step key"><div class="n">2</div><div class="who">Analyzer</div><div class="what"><b>webhook 수신 → 즉시 202</b> <span><span class="mono">POST /webhook</span> 받자마자 응답하고 실제 처리는 백그라운드로. 알림 폭풍에도 블로킹 안 됨.</span></div></div>
-        <div class="step"><div class="n">3</div><div class="who">Gate · G1</div><div class="what"><b>중복 억제</b> <span>알림 fingerprint 로 쿨다운 체크 — 같은 알림이 재통지돼도 resolved 전까진 재분석 0. 중복이면 여기서 끝.</span></div></div>
-        <div class="step"><div class="n">4</div><div class="who">Gate · G2</div><div class="what"><b>인시던트로 묶기</b> <span>같은 클러스터·네임스페이스 알림을 5분 창으로 하나의 인시던트로 조립(신규 생성 or 기존 갱신). 15개↑면 "대규모 장애 모드".</span></div></div>
-        <div class="step"><div class="n">5</div><div class="who">Gate · G4</div><div class="what"><b>예산 체크</b> <span>critical 은 자동 분석, warning 은 보류(수동). 인시던트당 토큰·일일 상한 확인 — 통과해야 Bedrock 까지 감.</span></div></div>
-        <div class="step key"><div class="n">6</div><div class="who">Context Pack</div><div class="what"><b>사실 수집·압축 (LLM 없음)</b> <span>Loki 로그(에러 패턴·넓은 시간창) + Thanos 메트릭(워크로드·CPU/Mem·문제 파드) + ArgoCD sync·k8s 이벤트(최근 배포). 덤프 아닌 요약으로.</span></div></div>
-        <div class="step key"><div class="n">7</div><div class="who">Bedrock</div><div class="what"><b>원인 분석 (Sonnet 4.6)</b> <span>시스템프롬프트(read-only 조사자·인젝션 방어) + Context Pack → 구조화 JSON(요약·가설·증거·confidence·data_gaps). 실패하면 "분석 실패" degraded 리포트로 대체.</span></div></div>
-        <div class="step"><div class="n">8</div><div class="who">출력</div><div class="what"><b>발송 · 표시</b> <span>리포트를 코드가 렌더링해 <span class="mono">Slack #test</span> 로 발송 + 상황판/인시던트 히트맵에 반영.</span></div></div>
-        <div class="step"><div class="n">9</div><div class="who">해소</div><div class="what"><b>자동 정리</b> <span>Alertmanager 가 resolved 보내면 인시던트 자동 해소 → 상황판에서 사라짐(안전망: 오래된 firing 도 자동 해소).</span></div></div>
+        <div class="step compact"><div class="n">1</div><div class="who">Alertmanager</div><div class="what"><b>알림 발화</b> <span>Prometheus/Thanos Ruler 룰 위반 → Alertmanager. critical/warning 이 <span class="mono">continue</span> 복사로 analyzer 에 전달(기존 라우팅 유지).</span></div></div>
+        <div class="step compact key"><div class="n">2</div><div class="who">Analyzer</div><div class="what"><b>webhook 수신 → 즉시 202</b> <span><span class="mono">POST /webhook</span> 받자마자 응답, 처리는 백그라운드(폭풍에도 블로킹 0).</span></div></div>
+        <div class="step compact"><div class="n">3</div><div class="who">Gate · G1</div><div class="what"><b>중복 억제</b> <span>fingerprint 쿨다운 — 같은 알림 재통지돼도 재분석 0.</span></div></div>
+        <div class="step compact"><div class="n">4</div><div class="who">Gate · G2</div><div class="what"><b>인시던트로 묶기</b> <span>같은 cluster·ns 알림을 5분 창으로 1건 조립. 15개↑면 "대규모 장애 모드".</span></div></div>
+        <div class="step compact"><div class="n">5</div><div class="who">Gate · G4</div><div class="what"><b>예산 체크</b> <span>critical 자동 / warning 보류. 토큰·일일 상한 통과해야 다음으로.</span></div></div>
+        <div class="step compact key"><div class="n">6</div><div class="who">Context Pack</div><div class="what"><b>사실 수집·압축 (LLM 없음)</b> <span>Loki 로그 + Thanos 메트릭(워크로드·CPU/Mem·문제파드) + ArgoCD/k8s 이벤트.</span><span class="add"><b>➕ 추가 가능</b> — 평소 대비 baseline diff · Drain3 로그 템플릿 · 토폴로지 홉 판정</span></div></div>
+        <div class="step compact key"><div class="n">7</div><div class="who">S3 Vectors</div><div class="what"><b>유사도 체크 (메모리)</b> <span>시그니처 임베딩(Titan) → 과거와 코사인 유사도 ≥0.90(재발)이면 <b>Bedrock 스킵하고 과거 결론 즉답</b>(비용↓). 아니면 다음으로.</span></div></div>
+        <div class="step compact key"><div class="n">8</div><div class="who">Bedrock</div><div class="what"><b>원인 분석 (Sonnet 4.6)</b> <span>시스템프롬프트(read-only·인젝션 방어)+Context Pack → 구조화 JSON(가설·증거·confidence·data_gaps). 실패 시 degraded.</span><span class="add"><b>➕ 추가 가능</b> — confidence 낮으면 MCP 도구로 2단 심층 조사 에이전트</span></div></div>
+        <div class="step compact"><div class="n">9</div><div class="who">출력</div><div class="what"><b>발송 · 표시 · 기억</b> <span>코드가 렌더 → <span class="mono">Slack</span> + 상황판/히트맵 + 성공 분석은 S3 Vectors 에 적재.</span><span class="add"><b>➕ 추가 가능</b> — 👍/👎 피드백 루프(틀린 분석을 메모리에 반영)</span></div></div>
+        <div class="step compact"><div class="n">10</div><div class="who">해소</div><div class="what"><b>자동 정리</b> <span>AM resolved → 인시던트 자동 해소 → 상황판에서 사라짐(안전망 포함).</span></div></div>
       </div>
     </div>
     <div class="page-no">04 — 상세 동작</div>
